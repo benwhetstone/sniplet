@@ -30,3 +30,26 @@
 - Added `PROJECT_NOTES.md` as a durable project memory file.
 - Added this `docs/session-log.md` file for concise session checkpoints.
 - Planned first git commit so the project history is no longer thread-dependent.
+
+### Privacy Tools And Preferences Cleanup
+- Added a drag-to-area `Blur` tool in the markup editor.
+- Added a drag-to-area `Redact` tool with a solid black privacy box.
+- Kept both privacy tools movable through the existing move interaction model.
+- Updated Preferences to match current export behavior by changing saved-copy wording from PNG to compressed JPG.
+- Removed the introductory text block from the top of Preferences.
+- Increased the Preferences window size and adjusted spacing so the bottom of the screen feels less cramped.
+- Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.
+
+### Editor Reliability And Versioning Pass
+- Reworked the markup toolbar into a two-row layout so controls fit more cleanly and feel less cramped.
+- Increased the markup window size and minimum size again to reduce clipping pressure.
+- Added persistent selection visuals for move/edit mode so annotations remain editable after you click away and come back.
+- Added resize handles for rectangle-style annotations including blur and redact boxes.
+- Added stronger tool guidance in the editor for move, blur, redact, and text behavior.
+- Changed the saved-image rendering path to use a flipped drawing context so saved markups line up with the editor preview.
+- Updated capture-related messaging to say "saved capture" or "image file" instead of outdated PNG wording.
+- Added a bundle-backed versioning scheme:
+- Marketing version: `0.6.0`
+- Build version: `20260401.2`
+- Surfaced that version/build string in the About menu and About dialog.
+- Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.

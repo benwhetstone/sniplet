@@ -33,19 +33,23 @@ Sniplet is a macOS screenshot and markup app being shaped into a fast, dependabl
 - `Portrait 4:5`
 - `Story 9:16`
 - `Landscape 16:9`
+- Privacy tools:
+- `Blur`
+- `Redact`
+- Preferences window cleaned up with macOS-style card layout, no intro copy at the top, larger window sizing, and JPG wording that matches current export behavior.
+- About now shows bundle-backed version/build information.
 
 ## Known Open Issues
 - Saved screenshots may still be larger than desired in some cases.
 - Markup UX still needs polish so all tools feel consistent and predictable.
-- Text background and border behavior may still need cleanup.
 - Need stronger confidence that save-to-disk and clipboard output always match the edited result.
+- Need real-world validation that the latest move, resize, blur, and alignment fixes feel correct in use.
 
 ## High-Value Next Work
 - Finish export/file-size reliability work.
-- Add blur tool with drag-to-area.
-- Add redaction tool with solid black box.
 - Continue cleanup toward a more native macOS feel.
 - Add more real-estate-friendly annotation workflows if needed after the core flow is stable.
+- Keep using semantic marketing versions with a date-based build number in the bundle metadata.
 
 ## Recovery Workflow
 - Keep this file current after major product decisions.

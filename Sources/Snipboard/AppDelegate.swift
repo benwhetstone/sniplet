@@ -76,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         )
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(menuItem(title: "About Sniplet", action: #selector(showAbout)))
+        menu.addItem(menuItem(title: "About \(aboutMenuTitle)", action: #selector(showAbout)))
         menu.addItem(menuItem(title: "Preferences…", action: #selector(showPreferences), keyEquivalent: ","))
         menu.addItem(menuItem(title: "Update Sniplet", action: #selector(updateApp)))
         menu.addItem(menuItem(title: "Request Screen Recording Access", action: #selector(requestPermissions)))
@@ -164,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "Sniplet"
-        alert.informativeText = "Designed by Ben Whetstone, 2026"
+        alert.informativeText = "Version \(appVersionString)\nDesigned by Ben Whetstone, 2026"
         alert.runModal()
     }
 
@@ -194,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hostingController = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Sniplet"
-        window.setContentSize(NSSize(width: 540, height: 520))
+        window.setContentSize(NSSize(width: 620, height: 600))
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.center()
@@ -203,5 +203,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         settingsWindowController = controller
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private var aboutMenuTitle: String {
+        "Sniplet \(appVersionString)"
+    }
+
+    private var appVersionString: String {
+        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        return "\(shortVersion) (\(buildVersion))"
     }
 }

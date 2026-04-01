@@ -67,7 +67,7 @@ final class CaptureController {
         if (openMarkup || settings.openMarkupAfterCapture), settings.screenshotFolderURL() == nil {
             showAlert(
                 title: "Choose a Folder First",
-                message: "Markup mode overwrites the saved PNG, so Sniplet needs a default screenshot folder before you edit."
+                message: "Markup mode overwrites the saved capture, so Sniplet needs a default screenshot folder before you edit."
             )
             return false
         }
@@ -113,7 +113,7 @@ final class CaptureController {
         if shouldSave, savedCapture == nil {
             showAlert(
                 title: "Save Failed",
-                message: "The screenshot was copied to the clipboard, but Sniplet could not save the PNG file."
+                message: "The screenshot was copied to the clipboard, but Sniplet could not save the image file."
             )
             return
         }

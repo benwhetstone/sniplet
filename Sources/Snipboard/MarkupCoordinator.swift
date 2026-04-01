@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import SwiftUI
 
 @MainActor
@@ -35,8 +36,8 @@ final class MarkupCoordinator {
         let hostingController = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Sniplet Markup"
-        window.setContentSize(NSSize(width: 1460, height: 980))
-        window.minSize = NSSize(width: 1220, height: 860)
+        window.setContentSize(NSSize(width: 1560, height: 1040))
+        window.minSize = NSSize(width: 1360, height: 920)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.center()
 
@@ -54,6 +55,8 @@ private enum MarkupTool: String, CaseIterable, Identifiable {
     case arrow = "Arrow"
     case rectangle = "Box"
     case ellipse = "Circle"
+    case blur = "Blur"
+    case redact = "Redact"
     case text = "Text"
     case symbol = "Symbol"
 
@@ -61,7 +64,7 @@ private enum MarkupTool: String, CaseIterable, Identifiable {
 
     var drawsByDrag: Bool {
         switch self {
-        case .pen, .highlighter, .arrow, .rectangle, .ellipse:
+        case .pen, .highlighter, .arrow, .rectangle, .ellipse, .blur, .redact:
             return true
         case .move, .text, .symbol:
             return false
@@ -124,6 +127,8 @@ private enum MarkupShapeKind {
     case arrow
     case rectangle
     case ellipse
+    case blur
+    case redact
 }
 
 private enum MarkupItem: Identifiable {
@@ -188,6 +193,23 @@ private struct EditingTextState: Identifiable {
     var text: String
 }
 
+private enum ResizeHandle: CaseIterable {
+    case topLeft
+    case top
+    case topRight
+    case right
+    case bottomRight
+    case bottom
+    case bottomLeft
+    case left
+}
+
+private enum MoveInteraction {
+    case none
+    case moveItem(UUID)
+    case resizeShape(UUID, ResizeHandle)
+}
+
 private struct MarkupEditorView: View {
     @State private var canvasImage: NSImage
     let fileURL: URL
@@ -203,11 +225,15 @@ private struct MarkupEditorView: View {
     @State private var fontChoice: MarkupFontChoice = .rounded
     @State private var textBackgroundChoice: TextBackgroundChoice = .clear
     @State private var editingText: EditingTextState?
+    @State private var selectedItemID: UUID?
     @State private var draggingItemID: UUID?
     @State private var draggingLastPoint: CGPoint?
+    @State private var moveInteraction: MoveInteraction = .none
     @State private var cropPreset: CropPreset = .freeform
 
     private let suggestedSymbols = ["→", "↗", "★", "✓", "✕", "!", "?", "❤"]
+    private static let blurRadius: Double = 18
+    private static let ciContext = CIContext(options: nil)
 
     init(initialImage: NSImage, fileURL: URL, onSave: @escaping (NSImage, URL) -> Void) {
         _canvasImage = State(initialValue: initialImage)
@@ -240,6 +266,10 @@ private struct MarkupEditorView: View {
                         if let previewItem {
                             draw(item: previewItem, in: imageFrame, with: &context)
                         }
+
+                        if tool == .move, let selectedItem {
+                            drawSelection(for: selectedItem, in: imageFrame, with: &context)
+                        }
                     }
                     .contentShape(Rectangle())
                     .gesture(interactionGesture(imageFrame: imageFrame))
@@ -252,10 +282,13 @@ private struct MarkupEditorView: View {
 
             bottomBar
         }
+        .onChange(of: tool) { _ in
+            commitInlineTextIfNeeded()
+        }
     }
 
     private var toolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Label("Markup", systemImage: "scribble.variable")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
@@ -269,8 +302,27 @@ private struct MarkupEditorView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 500)
+                .frame(maxWidth: 760)
 
+                Spacer(minLength: 0)
+
+                Button("Undo") {
+                    _ = items.popLast()
+                    selectedItemID = nil
+                }
+                .buttonStyle(.bordered)
+                .disabled(items.isEmpty && editingText == nil)
+
+                Button("Clear") {
+                    items.removeAll()
+                    editingText = nil
+                    selectedItemID = nil
+                }
+                .buttonStyle(.bordered)
+                .disabled(items.isEmpty && editingText == nil)
+            }
+
+            HStack(spacing: 14) {
                 ColorSwatchPicker(selection: $selectedColor)
 
                 if tool == .text {
@@ -280,7 +332,7 @@ private struct MarkupEditorView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .frame(width: 110)
+                    .frame(width: 130)
 
                     Picker("Background", selection: $textBackgroundChoice) {
                         ForEach(TextBackgroundChoice.allCases) { choice in
@@ -288,48 +340,36 @@ private struct MarkupEditorView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .frame(width: 110)
+                    .frame(width: 130)
                 }
 
                 if tool == .symbol {
-                    ForEach(suggestedSymbols, id: \.self) { symbol in
-                        Button(symbol) {
-                            symbolInput = symbol
+                    HStack(spacing: 8) {
+                        ForEach(suggestedSymbols, id: \.self) { symbol in
+                            Button(symbol) {
+                                symbolInput = symbol
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.bordered)
                     }
                 }
 
                 if tool == .text || tool == .symbol {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Size")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Slider(value: $fontSize, in: 18...72)
-                            .frame(width: 120)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(tool == .highlighter ? "Thickness" : "Stroke")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Slider(value: $lineWidth, in: tool == .highlighter ? 10...36 : 2...14)
-                            .frame(width: 120)
-                    }
+                    labeledSlider("Size", value: $fontSize, range: 18...72)
+                } else if tool != .move && tool != .blur && tool != .redact {
+                    labeledSlider(tool == .highlighter ? "Thickness" : "Stroke", value: $lineWidth, range: tool == .highlighter ? 10...36 : 2...14)
                 }
 
-                Button("Undo") {
-                    _ = items.popLast()
+                if tool == .blur || tool == .redact || tool == .move {
+                    Text(toolHint)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.white.opacity(0.65), in: Capsule())
                 }
-                .buttonStyle(.bordered)
-                .disabled(items.isEmpty && editingText == nil)
 
-                Button("Clear") {
-                    items.removeAll()
-                    editingText = nil
-                }
-                .buttonStyle(.bordered)
-                .disabled(items.isEmpty && editingText == nil)
+                Spacer(minLength: 0)
 
                 Picker("Crop", selection: $cropPreset) {
                     ForEach(CropPreset.allCases) { preset in
@@ -337,29 +377,22 @@ private struct MarkupEditorView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .frame(width: 150)
+                .frame(width: 170)
 
                 Button("Apply Crop") {
                     applyCropPreset()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .disabled(cropPreset == .freeform)
-
             }
-            .padding(16)
         }
-        .background(
-            LinearGradient(
-                colors: [.white.opacity(0.82), Color(red: 0.94, green: 0.96, blue: 0.99)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .padding(18)
+        .background(.ultraThinMaterial)
     }
 
     private var bottomBar: some View {
         HStack {
-            Text(tool == .move ? "Drag any annotation to reposition it." : "Click Save when you're done.")
+            Text(bottomHint)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
 
@@ -377,17 +410,71 @@ private struct MarkupEditorView: View {
         .background(.regularMaterial)
     }
 
+    private var toolHint: String {
+        switch tool {
+        case .move:
+            return "Click to select, drag to move, use handles to resize."
+        case .blur:
+            return "Drag over sensitive content to blur it."
+        case .redact:
+            return "Drag to place a solid privacy box."
+        default:
+            return ""
+        }
+    }
+
+    private var bottomHint: String {
+        switch tool {
+        case .move:
+            return "Selections stay editable. Click an annotation any time to move or resize it."
+        case .blur:
+            return "Blur creates a privacy region you can come back and resize later."
+        case .redact:
+            return "Redaction boxes stay editable. Switch to Move to adjust them later."
+        case .text:
+            return "Click to place text. Empty text boxes disappear on your next action."
+        default:
+            return "Click Save when you're done."
+        }
+    }
+
+    private func labeledSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Slider(value: value, in: range)
+                .frame(width: 140)
+        }
+    }
+
     private func interactionGesture(imageFrame: CGRect) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                commitInlineTextIfNeeded()
+
                 if tool == .move {
                     guard let point = normalizedPoint(from: value.location, imageFrame: imageFrame) else { return }
-                    if draggingItemID == nil {
-                        draggingItemID = hitTestItem(at: point)?.id
-                        draggingLastPoint = point
-                    } else if let itemID = draggingItemID, let lastPoint = draggingLastPoint {
-                        let delta = CGPoint(x: point.x - lastPoint.x, y: point.y - lastPoint.y)
-                        moveItem(withID: itemID, by: delta)
+
+                    switch moveInteraction {
+                    case .none:
+                        if let selectedItemID,
+                           let handle = hitTestResizeHandle(at: value.location, imageFrame: imageFrame, itemID: selectedItemID) {
+                            moveInteraction = .resizeShape(selectedItemID, handle)
+                            draggingLastPoint = point
+                        } else if let hitItem = hitTestItem(at: point) {
+                            selectedItemID = hitItem.id
+                            moveInteraction = .moveItem(hitItem.id)
+                            draggingLastPoint = point
+                        }
+                    case .moveItem(let itemID):
+                        if let lastPoint = draggingLastPoint {
+                            let delta = CGPoint(x: point.x - lastPoint.x, y: point.y - lastPoint.y)
+                            moveItem(withID: itemID, by: delta)
+                            draggingLastPoint = point
+                        }
+                    case .resizeShape(let itemID, let handle):
+                        resizeShape(withID: itemID, handle: handle, to: point)
                         draggingLastPoint = point
                     }
                     return
@@ -408,7 +495,12 @@ private struct MarkupEditorView: View {
                 let moved = abs(value.translation.width) + abs(value.translation.height)
 
                 if tool == .move {
-                    draggingItemID = nil
+                    if moved < 4,
+                       let point = normalizedPoint(from: value.location, imageFrame: imageFrame),
+                       hitTestItem(at: point) == nil {
+                        selectedItemID = nil
+                    }
+                    moveInteraction = .none
                     draggingLastPoint = nil
                     return
                 }
@@ -428,6 +520,7 @@ private struct MarkupEditorView: View {
                     defer { activePoints.removeAll() }
                     guard let item = finalizedItem(from: activePoints) else { return }
                     items.append(item)
+                    selectedItemID = item.id
                     return
                 }
 
@@ -445,6 +538,7 @@ private struct MarkupEditorView: View {
         switch tool {
         case .text:
             if let existingText = textItem(at: point) {
+                selectedItemID = existingText.id
                 fontSize = existingText.fontSize
                 fontChoice = existingText.fontChoice
                 selectedColor = ColorChoice.closest(to: existingText.color)
@@ -455,19 +549,20 @@ private struct MarkupEditorView: View {
                     text: existingText.text
                 )
             } else {
+                selectedItemID = nil
                 editingText = EditingTextState(itemID: nil, anchor: point, text: "")
             }
         case .symbol:
-            items.append(
-                .symbol(
-                    MarkupSymbol(
-                        symbol: symbolInput,
-                        anchor: point,
-                        color: selectedColor.color,
-                        fontSize: fontSize
-                    )
+            let item = MarkupItem.symbol(
+                MarkupSymbol(
+                    symbol: symbolInput,
+                    anchor: point,
+                    color: selectedColor.color,
+                    fontSize: fontSize
                 )
             )
+            items.append(item)
+            selectedItemID = item.id
         default:
             break
         }
@@ -521,8 +616,10 @@ private struct MarkupEditorView: View {
         if let itemID = editingText.itemID,
            let index = items.firstIndex(where: { $0.id == itemID }) {
             items[index] = item
+            selectedItemID = item.id
         } else {
             items.append(item)
+            selectedItemID = item.id
         }
     }
 
@@ -558,6 +655,11 @@ private struct MarkupEditorView: View {
         finalizedItem(from: activePoints)
     }
 
+    private var selectedItem: MarkupItem? {
+        guard let selectedItemID else { return nil }
+        return items.first(where: { $0.id == selectedItemID })
+    }
+
     private func finalizedItem(from points: [CGPoint]) -> MarkupItem? {
         switch tool {
         case .move:
@@ -577,6 +679,12 @@ private struct MarkupEditorView: View {
         case .ellipse:
             guard points.count >= 2 else { return nil }
             return .shape(MarkupShape(kind: .ellipse, start: points[0], end: points[1], color: selectedColor.color, lineWidth: lineWidth))
+        case .blur:
+            guard points.count >= 2 else { return nil }
+            return .shape(MarkupShape(kind: .blur, start: points[0], end: points[1], color: .clear, lineWidth: 0))
+        case .redact:
+            guard points.count >= 2 else { return nil }
+            return .shape(MarkupShape(kind: .redact, start: points[0], end: points[1], color: .black, lineWidth: 0))
         case .text, .symbol:
             return nil
         }
@@ -633,6 +741,100 @@ private struct MarkupEditorView: View {
         }
     }
 
+    private func drawSelection(for item: MarkupItem, in frame: CGRect, with context: inout GraphicsContext) {
+        guard let rect = selectionRect(for: item, in: frame) else { return }
+
+        context.stroke(
+            Path(roundedRect: rect, cornerRadius: 12),
+            with: .color(Color.accentColor),
+            style: StrokeStyle(lineWidth: 2, dash: [7, 5])
+        )
+
+        if case .shape(let shape) = item, isResizable(shape.kind) {
+            for handleRect in resizeHandleRects(for: rect) {
+                context.fill(Path(ellipseIn: handleRect), with: .color(.white))
+                context.stroke(Path(ellipseIn: handleRect), with: .color(Color.accentColor), style: StrokeStyle(lineWidth: 2))
+            }
+        }
+    }
+
+    private func selectionRect(for item: MarkupItem, in frame: CGRect) -> CGRect? {
+        switch item {
+        case .shape(let shape):
+            let start = map(point: shape.start, into: frame)
+            let end = map(point: shape.end, into: frame)
+            return CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            ).insetBy(dx: -8, dy: -8)
+        case .text(let text):
+            let point = map(point: text.anchor, into: frame)
+            let size = textSize(for: text.text, size: text.fontSize, choice: text.fontChoice)
+            return CGRect(x: point.x - 4, y: point.y - (size.height / 2) - 8, width: size.width + 24, height: size.height + 16)
+        case .symbol(let symbol):
+            let point = map(point: symbol.anchor, into: frame)
+            let attributed = NSAttributedString(
+                string: symbol.symbol,
+                attributes: [.font: NSFont.systemFont(ofSize: symbol.fontSize, weight: .bold)]
+            )
+            let size = attributed.size()
+            return CGRect(x: point.x - (size.width / 2) - 8, y: point.y - (size.height / 2) - 8, width: size.width + 16, height: size.height + 16)
+        case .stroke(let stroke):
+            let points = stroke.points.map { map(point: $0, into: frame) }
+            guard let first = points.first else { return nil }
+            let bounds = points.dropFirst().reduce(CGRect(origin: first, size: .zero)) { partial, point in
+                partial.union(CGRect(origin: point, size: .zero))
+            }
+            return bounds.insetBy(dx: -max(12, stroke.lineWidth), dy: -max(12, stroke.lineWidth))
+        }
+    }
+
+    private func resizeHandleRects(for rect: CGRect) -> [CGRect] {
+        resizeHandleCenters(for: rect).values.map {
+            CGRect(x: $0.x - 5, y: $0.y - 5, width: 10, height: 10)
+        }
+    }
+
+    private func resizeHandleCenters(for rect: CGRect) -> [ResizeHandle: CGPoint] {
+        [
+            .topLeft: CGPoint(x: rect.minX, y: rect.maxY),
+            .top: CGPoint(x: rect.midX, y: rect.maxY),
+            .topRight: CGPoint(x: rect.maxX, y: rect.maxY),
+            .right: CGPoint(x: rect.maxX, y: rect.midY),
+            .bottomRight: CGPoint(x: rect.maxX, y: rect.minY),
+            .bottom: CGPoint(x: rect.midX, y: rect.minY),
+            .bottomLeft: CGPoint(x: rect.minX, y: rect.minY),
+            .left: CGPoint(x: rect.minX, y: rect.midY)
+        ]
+    }
+
+    private func hitTestResizeHandle(at location: CGPoint, imageFrame: CGRect, itemID: UUID) -> ResizeHandle? {
+        guard let item = items.first(where: { $0.id == itemID }),
+              let rect = selectionRect(for: item, in: imageFrame)
+        else {
+            return nil
+        }
+
+        for (handle, center) in resizeHandleCenters(for: rect) {
+            let hitRect = CGRect(x: center.x - 12, y: center.y - 12, width: 24, height: 24)
+            if hitRect.contains(location) {
+                return handle
+            }
+        }
+        return nil
+    }
+
+    private func isResizable(_ kind: MarkupShapeKind) -> Bool {
+        switch kind {
+        case .rectangle, .ellipse, .blur, .redact:
+            return true
+        case .arrow:
+            return false
+        }
+    }
+
     private func hitTestItem(at point: CGPoint) -> MarkupItem? {
         let imagePoint = denormalize(point: point, size: canvasImage.size)
 
@@ -678,6 +880,55 @@ private struct MarkupEditorView: View {
     private func moveItem(withID id: UUID, by delta: CGPoint) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index] = translated(item: items[index], by: delta)
+    }
+
+    private func resizeShape(withID id: UUID, handle: ResizeHandle, to point: CGPoint) {
+        guard let index = items.firstIndex(where: { $0.id == id }),
+              case .shape(let shape) = items[index],
+              isResizable(shape.kind)
+        else {
+            return
+        }
+
+        var minX = min(shape.start.x, shape.end.x)
+        var maxX = max(shape.start.x, shape.end.x)
+        var minY = min(shape.start.y, shape.end.y)
+        var maxY = max(shape.start.y, shape.end.y)
+
+        let clampedX = min(max(point.x, 0), 1)
+        let clampedY = min(max(point.y, 0), 1)
+
+        switch handle {
+        case .topLeft:
+            minX = clampedX
+            maxY = clampedY
+        case .top:
+            maxY = clampedY
+        case .topRight:
+            maxX = clampedX
+            maxY = clampedY
+        case .right:
+            maxX = clampedX
+        case .bottomRight:
+            maxX = clampedX
+            minY = clampedY
+        case .bottom:
+            minY = clampedY
+        case .bottomLeft:
+            minX = clampedX
+            minY = clampedY
+        case .left:
+            minX = clampedX
+        }
+
+        let resizedShape = MarkupShape(
+            kind: shape.kind,
+            start: CGPoint(x: min(minX, maxX), y: max(minY, maxY)),
+            end: CGPoint(x: max(minX, maxX), y: min(minY, maxY)),
+            color: shape.color,
+            lineWidth: shape.lineWidth
+        )
+        items[index] = .shape(resizedShape)
     }
 
     private func translated(item: MarkupItem, by delta: CGPoint) -> MarkupItem {
@@ -760,6 +1011,37 @@ private struct MarkupEditorView: View {
             path.move(to: end)
             path.addLine(to: arrowB)
             context.stroke(path, with: .color(shape.color), style: strokeStyle)
+        case .blur:
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            context.fill(
+                Path(roundedRect: rect, cornerRadius: 12),
+                with: .color(Color.white.opacity(0.28))
+            )
+            context.stroke(
+                Path(roundedRect: rect, cornerRadius: 12),
+                with: .color(Color.white.opacity(0.92)),
+                style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+            )
+            context.draw(
+                Text("Blur")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white),
+                at: CGPoint(x: rect.midX, y: rect.midY),
+                anchor: .center
+            )
+        case .redact:
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            context.fill(Path(roundedRect: rect, cornerRadius: 10), with: .color(.black))
         }
     }
 
@@ -767,7 +1049,7 @@ private struct MarkupEditorView: View {
         commitInlineTextIfNeeded()
 
         let image = NSImage(size: canvasImage.size)
-        image.lockFocus()
+        image.lockFocusFlipped(true)
         canvasImage.draw(in: CGRect(origin: .zero, size: canvasImage.size))
 
         for item in items {
@@ -835,6 +1117,15 @@ private struct MarkupEditorView: View {
                     x: end.x - arrowLength * cos(angle + .pi / 7),
                     y: end.y - arrowLength * sin(angle + .pi / 7)
                 ))
+            case .blur:
+                applyBlur(on: image, in: normalizedRect(from: start, to: end))
+                return
+            case .redact:
+                let rect = normalizedRect(from: start, to: end)
+                let fillPath = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
+                NSColor.black.setFill()
+                fillPath.fill()
+                return
             }
 
             path.stroke()
@@ -900,6 +1191,42 @@ private struct MarkupEditorView: View {
         let nsImage = NSImage(size: NSSize(width: croppedCG.width, height: croppedCG.height))
         nsImage.addRepresentation(NSBitmapImageRep(cgImage: croppedCG))
         return nsImage
+    }
+
+    private func normalizedRect(from start: CGPoint, to end: CGPoint) -> CGRect {
+        CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: abs(end.x - start.x),
+            height: abs(end.y - start.y)
+        ).integral
+    }
+
+    private func applyBlur(on image: NSImage, in rect: CGRect) {
+        let imageRect = CGRect(origin: .zero, size: image.size)
+        let targetRect = rect.intersection(imageRect).integral
+        guard !targetRect.isNull, !targetRect.isEmpty else { return }
+
+        var proposedRect = CGRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil),
+              let cropped = cgImage.cropping(to: targetRect)
+        else {
+            return
+        }
+
+        let input = CIImage(cgImage: cropped)
+        guard let filter = CIFilter(name: "CIGaussianBlur") else { return }
+        filter.setValue(input.clampedToExtent(), forKey: kCIInputImageKey)
+        filter.setValue(Self.blurRadius, forKey: kCIInputRadiusKey)
+
+        guard let blurred = filter.outputImage?.cropped(to: input.extent),
+              let output = Self.ciContext.createCGImage(blurred, from: input.extent),
+              let context = NSGraphicsContext.current?.cgContext
+        else {
+            return
+        }
+
+        context.draw(output, in: targetRect)
     }
 
     private func map(point: CGPoint, into frame: CGRect) -> CGPoint {
