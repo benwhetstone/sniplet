@@ -63,6 +63,21 @@ You can launch it with Finder or:
 open "/Users/benwhetstone/Documents/Software Projects/Sniplet/dist/Sniplet.app"
 ```
 
+## Install From GitHub
+
+The public download page is:
+
+```bash
+https://github.com/benwhetstone/sniplet/releases/latest
+```
+
+Because Sniplet is shared without Apple notarization, the DMG includes an installer helper for Macs you trust:
+
+1. Download `Sniplet-Installer.dmg`
+2. Open the disk image
+3. Run `Install Sniplet.command`
+4. Let it copy `Sniplet.app` into `/Applications` and clear the quarantine flag
+
 ## Launch At Login Note
 
 The launch-at-login toggle is implemented with `SMAppService`, which works properly when Sniplet is packaged as a standard macOS `.app`. When running directly from SwiftPM during development, macOS may refuse to register it for login items even though the rest of the app works.

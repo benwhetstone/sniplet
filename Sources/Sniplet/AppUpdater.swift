@@ -27,7 +27,7 @@ final class AppUpdater {
 
                 showAlert(
                     title: "Update Ready",
-                    message: "Sniplet opened the latest GitHub release so you can download and install the newest build."
+                    message: "Sniplet opened the latest GitHub download. After the disk image opens, run Install Sniplet.command to copy the app into Applications on a Mac you trust."
                 )
             } catch {
                 showAlert(

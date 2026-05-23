@@ -40,6 +40,13 @@ find "$APP_DIR" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
 find "$APP_DIR" -exec xattr -d "com.apple.fileprovider.fpfs#P" {} + 2>/dev/null || true
 xattr -cr "$APP_DIR" 2>/dev/null || true
 codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_DIR"
+# The app bundle root itself can pick up Finder/file-provider metadata even after
+# the recursive cleanup above. Strip it one more time before shipping.
+xattr -d com.apple.provenance "$APP_DIR" 2>/dev/null || true
+xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -d "com.apple.fileprovider.fpfs#P" "$APP_DIR" 2>/dev/null || true
+xattr -cr "$APP_DIR" 2>/dev/null || true
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 echo "Packaged app:"
 echo "$APP_DIR"
