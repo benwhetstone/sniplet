@@ -3,84 +3,76 @@ import Foundation
 
 @MainActor
 final class AppUpdater {
+    private let owner = "benwhetstone"
+    private let repository = "sniplet"
+    private let preferredAssetName = "Sniplet-Installer.dmg"
+
     func installLatestAvailableBuild() {
-        guard let currentURL = Bundle.main.bundleURL.standardizedFileURL as URL?,
-              let candidateURL = newestCandidate(excluding: currentURL)
-        else {
-            showAlert(
-                title: "No Update Found",
-                message: "Sniplet could not find a newer local build. Put a newer Sniplet.app in Downloads, mount the installer DMG, or keep the project dist folder available."
-            )
-            return
-        }
+        Task { @MainActor in
+            do {
+                let release = try await fetchLatestRelease()
+                let currentVersion = currentAppVersion()
+                let latestVersion = releaseVersion(from: release.tagName)
 
-        let targetURL = URL(fileURLWithPath: "/Applications/Sniplet.app")
-        let candidateDate = modificationDate(for: candidateURL) ?? .distantPast
-        let currentDate = modificationDate(for: currentURL) ?? .distantPast
+                guard isNewerRelease(latestVersion, than: currentVersion) else {
+                    showAlert(
+                        title: "Already Up To Date",
+                        message: "This copy of Sniplet already matches the latest GitHub release."
+                    )
+                    return
+                }
 
-        guard candidateDate > currentDate || currentURL.path != targetURL.path else {
-            showAlert(
-                title: "Already Up To Date",
-                message: "This installed copy is already as new as the local update source Sniplet found."
-            )
-            return
-        }
+                let targetURL = releaseDownloadURL(from: release) ?? release.htmlURL
+                NSWorkspace.shared.open(targetURL)
 
-        let script = """
-        /bin/sleep 1
-        /bin/rm -rf "\(targetURL.path)"
-        /bin/cp -R "\(candidateURL.path)" "\(targetURL.path)"
-        /usr/bin/open "\(targetURL.path)"
-        """
-
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        task.arguments = ["-lc", script]
-
-        do {
-            try task.run()
-            NSApplication.shared.terminate(nil)
-        } catch {
-            showAlert(
-                title: "Update Failed",
-                message: "Sniplet found an update but could not install it automatically."
-            )
-        }
-    }
-
-    private func newestCandidate(excluding currentURL: URL) -> URL? {
-        candidateURLs()
-            .map { $0.standardizedFileURL }
-            .filter { $0 != currentURL }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-            .sorted { lhs, rhs in
-                (modificationDate(for: lhs) ?? .distantPast) > (modificationDate(for: rhs) ?? .distantPast)
+                showAlert(
+                    title: "Update Ready",
+                    message: "Sniplet opened the latest GitHub release so you can download and install the newest build."
+                )
+            } catch {
+                showAlert(
+                    title: "Update Failed",
+                    message: "Sniplet could not check GitHub Releases right now."
+                )
             }
-            .first
+        }
     }
 
-    private func candidateURLs() -> [URL] {
-        let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
-        let downloads = home.appendingPathComponent("Downloads/Sniplet.app")
-        let project = home.appendingPathComponent("Documents/Software Projects/Sniplet/dist/Sniplet.app")
-        let mounted = URL(fileURLWithPath: "/Volumes/Sniplet/Sniplet.app")
+    func releaseVersion(from tagName: String) -> String {
+        let trimmed = tagName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("v"), trimmed.count > 1 {
+            return String(trimmed.dropFirst())
+        }
+        return trimmed
+    }
 
-        var urls = [downloads, project, mounted]
+    func isNewerRelease(_ latestVersion: String, than currentVersion: String) -> Bool {
+        latestVersion.compare(currentVersion, options: .numeric) == .orderedDescending
+    }
 
-        if let volumes = try? fm.contentsOfDirectory(
-            at: URL(fileURLWithPath: "/Volumes"),
-            includingPropertiesForKeys: nil
-        ) {
-            urls.append(contentsOf: volumes.map { $0.appendingPathComponent("Sniplet.app") })
+    func releaseDownloadURL(from release: GitHubRelease) -> URL? {
+        release.assets.first(where: { $0.name == preferredAssetName })?.browserDownloadURL
+            ?? release.assets.first(where: { $0.name.hasSuffix(".dmg") })?.browserDownloadURL
+    }
+
+    private func currentAppVersion() -> String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    private func fetchLatestRelease() async throws -> GitHubRelease {
+        let endpoint = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest")!
+        var request = URLRequest(url: endpoint)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("Sniplet-Updater", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw UpdaterError.invalidResponse
         }
 
-        return urls
-    }
-
-    private func modificationDate(for url: URL) -> Date? {
-        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-        return values?.contentModificationDate
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(GitHubRelease.self, from: data)
     }
 
     private func showAlert(title: String, message: String) {
@@ -89,4 +81,19 @@ final class AppUpdater {
         alert.informativeText = message
         alert.runModal()
     }
+}
+
+struct GitHubRelease: Decodable {
+    let tagName: String
+    let htmlURL: URL
+    let assets: [GitHubReleaseAsset]
+}
+
+struct GitHubReleaseAsset: Decodable {
+    let name: String
+    let browserDownloadURL: URL
+}
+
+private enum UpdaterError: Error {
+    case invalidResponse
 }

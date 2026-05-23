@@ -13,6 +13,7 @@ PLIST_TEMPLATE="$ROOT_DIR/packaging/Info.plist"
 PLIST_PATH="$CONTENTS_DIR/Info.plist"
 ICON_PATH="$ROOT_DIR/packaging/Sniplet.icns"
 TUTORIAL_PATH="$ROOT_DIR/packaging/Tutorial.html"
+SIGNING_IDENTITY="${SNIPLET_SIGNING_IDENTITY:-"-"}"
 
 mkdir -p "$ROOT_DIR/dist"
 
@@ -38,7 +39,15 @@ find "$APP_DIR" -exec xattr -d com.apple.provenance {} + 2>/dev/null || true
 find "$APP_DIR" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
 find "$APP_DIR" -exec xattr -d "com.apple.fileprovider.fpfs#P" {} + 2>/dev/null || true
 xattr -cr "$APP_DIR" 2>/dev/null || true
-codesign --force --deep --sign - "$APP_DIR"
+codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_DIR"
 
 echo "Packaged app:"
 echo "$APP_DIR"
+
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  echo "Signing mode: ad hoc"
+  echo "Note: macOS permissions like Screen Recording may reset between updates until you package with a stable signing identity."
+else
+  echo "Signing identity:"
+  echo "$SIGNING_IDENTITY"
+fi

@@ -115,3 +115,35 @@ func constrainedSizeStillReducesLargeSavedExports() {
     #expect(result.height < original.height)
     #expect(max(result.width, result.height) == ClipboardWriter.maxExportDimension)
 }
+
+@Test
+@MainActor
+func updaterRecognizesNewerSemanticVersion() {
+    let updater = AppUpdater()
+
+    #expect(updater.releaseVersion(from: "v0.6.1") == "0.6.1")
+    #expect(updater.isNewerRelease("0.6.1", than: "0.6.0"))
+    #expect(!updater.isNewerRelease("0.6.0", than: "0.6.0"))
+}
+
+@Test
+@MainActor
+func updaterPrefersDmgAssetFromRelease() {
+    let updater = AppUpdater()
+    let release = GitHubRelease(
+        tagName: "v0.6.1",
+        htmlURL: URL(string: "https://github.com/benwhetstone/sniplet/releases/tag/v0.6.1")!,
+        assets: [
+            GitHubReleaseAsset(
+                name: "Sniplet.zip",
+                browserDownloadURL: URL(string: "https://example.com/Sniplet.zip")!
+            ),
+            GitHubReleaseAsset(
+                name: "Sniplet-Installer.dmg",
+                browserDownloadURL: URL(string: "https://example.com/Sniplet-Installer.dmg")!
+            )
+        ]
+    )
+
+    #expect(updater.releaseDownloadURL(from: release)?.absoluteString == "https://example.com/Sniplet-Installer.dmg")
+}
