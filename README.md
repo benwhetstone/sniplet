@@ -76,7 +76,8 @@ Because Sniplet is shared without Apple notarization, the DMG includes a plain H
 1. Download `Sniplet-Installer.dmg`
 2. Open the disk image
 3. Open `1 - Start Here.html`
-4. Paste the one-line Terminal command it shows and enter your macOS password once when prompted
+4. Click `Copy Command and Open Terminal`
+5. In Terminal, paste and run the command, then enter your macOS password once when prompted
 
 ## Launch At Login Note
 

@@ -97,34 +97,57 @@
       font: inherit;
       cursor: pointer;
     }
+
+    .secondary {
+      margin-left: 0.6rem;
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Start Here</h1>
-    <p>Because Sniplet is shared without Apple notarization, macOS may block anything executable that comes directly from the download. This page is the safe path around that.</p>
+    <p>Because Sniplet is shared without Apple notarization, macOS may block anything executable that comes directly from the download. This page gives you the closest reliable one-click path without the Apple fee.</p>
     <ol>
-      <li>Open Terminal on your Mac.</li>
-      <li>Copy the command below.</li>
-      <li>Paste it into Terminal and press Return.</li>
+      <li>Click <strong>Copy Command and Open Terminal</strong>.</li>
+      <li>In Terminal, press <strong>Command-V</strong> and then <strong>Return</strong>.</li>
       <li>Enter your macOS password once when prompted.</li>
     </ol>
     <div class="command">
       <code id="install-command">sudo /bin/zsh -c 'set -e; app=""; for volume in /Volumes/Sniplet*; do [[ -d "$volume/.Sniplet.app" ]] && { app="$volume/.Sniplet.app"; break; }; done; target="/Applications/Sniplet.app"; [[ -n "$app" ]] || { echo "Sniplet disk image not found. Keep the disk image open and try again."; exit 1; }; pkill -f "$target/Contents/MacOS/Sniplet" 2>/dev/null || true; rm -rf "$target"; /usr/bin/ditto --noextattr --norsrc "$app" "$target"; xattr -dr com.apple.quarantine "$target" 2>/dev/null || true; xattr -cr "$target" 2>/dev/null || true; spctl --add --label Sniplet "$target" 2>/dev/null || true; spctl --enable --label Sniplet 2>/dev/null || true; open "$target"'</code>
     </div>
-    <button id="copy-button" type="button">Copy Install Command</button>
+    <button id="copy-open-button" type="button">Copy Command and Open Terminal</button>
+    <button id="copy-button" class="secondary" type="button">Copy Only</button>
     <p class="note">Keep this disk image open while you run the command so Sniplet can be copied into <strong>/Applications</strong>.</p>
   </main>
   <script>
-    const button = document.getElementById("copy-button");
     const command = document.getElementById("install-command").textContent;
-    button.addEventListener("click", async () => {
+    const copyButton = document.getElementById("copy-button");
+    const copyOpenButton = document.getElementById("copy-open-button");
+    const terminalURL = "file:///System/Applications/Utilities/Terminal.app";
+
+    async function copyCommand() {
       try {
         await navigator.clipboard.writeText(command);
-        button.textContent = "Copied";
+        copyButton.textContent = "Copied";
+        copyOpenButton.textContent = "Copied and Opening Terminal";
+        return true;
       } catch {
-        button.textContent = "Copy manually";
+        copyButton.textContent = "Copy manually";
+        copyOpenButton.textContent = "Open Terminal";
+        return false;
       }
+    }
+
+    copyOpenButton.addEventListener("click", async () => {
+      await copyCommand();
+      window.location.href = terminalURL;
+    });
+
+    copyButton.addEventListener("click", async () => {
+      await copyCommand();
     });
   </script>
 </body>
