@@ -75,10 +75,10 @@ Because Sniplet is shared without Apple notarization, the public DMG uses the no
 
 1. Download `Sniplet-Installer.dmg`
 2. Open the disk image
-3. Open `1 - Open Anyway Guide.html` if you want a plain-language walkthrough first
+3. Open `OPEN FIRST - If Mac Blocks Sniplet.html` if you want a plain-language walkthrough first
 4. Drag `Sniplet.app` into `Applications`
 5. Open `Sniplet` from `Applications`
-6. If macOS blocks the first launch, follow the steps in `1 - Open Anyway Guide.html`
+6. If macOS blocks the first launch, follow the steps in `OPEN FIRST - If Mac Blocks Sniplet.html`
 
 ## Launch At Login Note
 
