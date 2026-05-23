@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Sniplet Anyway</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f8f5ed;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #5f5648;
+      --accent: #c04a12;
+      --line: #ddd2bf;
+      --shadow: rgba(42, 29, 7, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(192, 74, 18, 0.16), transparent 26rem),
+        linear-gradient(180deg, #fbf8f1 0%, var(--paper) 100%);
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+    }
+
+    main {
+      width: min(56rem, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 1.5rem;
+      box-shadow: 0 1.25rem 3rem var(--shadow);
+      overflow: hidden;
+    }
+
+    header {
+      padding: 2rem 2rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.6;
+    }
+
+    .steps {
+      display: grid;
+      gap: 1rem;
+      padding: 1.5rem 2rem 2rem;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 3rem 1fr;
+      gap: 1rem;
+      align-items: start;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.65);
+    }
+
+    .number {
+      width: 3rem;
+      height: 3rem;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: white;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .step h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.15rem;
+    }
+
+    .callout {
+      margin: 0 2rem 2rem;
+      padding: 1rem 1.1rem;
+      border-left: 0.35rem solid var(--accent);
+      background: rgba(192, 74, 18, 0.08);
+      border-radius: 0.75rem;
+    }
+
+    strong {
+      color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>If Mac Blocks Sniplet</h1>
+      <p>If you see a message saying Sniplet cannot be opened, cannot be verified, or should be moved to the Trash, use these exact steps.</p>
+    </header>
+    <section class="steps">
+      <div class="step">
+        <div class="number">1</div>
+        <div>
+          <h2>Install Sniplet normally</h2>
+          <p>Drag <strong>Sniplet.app</strong> into <strong>Applications</strong>, then open Sniplet from your <strong>Applications</strong> folder.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="number">2</div>
+        <div>
+          <h2>If the warning appears, click Done</h2>
+          <p>Do <strong>not</strong> choose Move to Trash. Just close the warning so Sniplet stays in <strong>Applications</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="number">3</div>
+        <div>
+          <h2>Open System Settings</h2>
+          <p>Go to <strong>System Settings</strong>, then click <strong>Privacy &amp; Security</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="number">4</div>
+        <div>
+          <h2>Scroll down and click Open Anyway</h2>
+          <p>Near the bottom of the page, macOS should show that Sniplet was blocked. Click <strong>Open Anyway</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="number">5</div>
+        <div>
+          <h2>Open Sniplet again</h2>
+          <p>Try opening Sniplet one more time and confirm <strong>Open</strong> if macOS asks again.</p>
+        </div>
+      </div>
+    </section>
+    <div class="callout">
+      <p><strong>If you already clicked Move to Trash:</strong> drag <strong>Sniplet.app</strong> into <strong>Applications</strong> again from this disk image, then follow the same steps above.</p>
+    </div>
+  </main>
+</body>
+</html>

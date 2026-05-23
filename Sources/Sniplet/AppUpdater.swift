@@ -27,7 +27,7 @@ final class AppUpdater {
 
                 showAlert(
                     title: "Update Ready",
-                    message: "Sniplet opened the latest GitHub download. Drag Sniplet into Applications. If macOS blocks the first launch, open System Settings > Privacy & Security and click Open Anyway for Sniplet."
+                    message: "Sniplet opened the latest GitHub download. Drag Sniplet into Applications. If macOS blocks the first launch, open the included 1 - Open Anyway Guide.html file for the exact steps."
                 )
             } catch {
                 showAlert(
