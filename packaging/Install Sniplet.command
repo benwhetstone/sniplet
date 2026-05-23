@@ -5,38 +5,48 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE_APP="$SCRIPT_DIR/Sniplet.app"
 TARGET_APP="/Applications/Sniplet.app"
-INSTALLING_USER="${SUDO_USER:-$USER}"
+TARGET_BINARY="$TARGET_APP/Contents/MacOS/Sniplet"
 
 if [[ ! -d "$SOURCE_APP" ]]; then
   echo "Could not find Sniplet.app next to this installer."
   exit 1
 fi
 
-if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-  echo "Installing Sniplet into /Applications..."
-  echo "macOS may ask for your password once so it can replace the app cleanly."
-  exec sudo "$0" "$@"
-fi
+echo "Installing Sniplet into /Applications..."
+echo "macOS should ask for your password once so it can replace the app cleanly."
 
-pkill -f "$TARGET_APP/Contents/MacOS/Sniplet" 2>/dev/null || true
-rm -rf "$TARGET_APP"
-/usr/bin/ditto --noextattr --norsrc "$SOURCE_APP" "$TARGET_APP"
-xattr -dr com.apple.quarantine "$TARGET_APP" 2>/dev/null || true
-xattr -cr "$TARGET_APP" 2>/dev/null || true
+privileged_command=$(cat <<EOF
+pkill -f ${(q)TARGET_BINARY} 2>/dev/null || true
+rm -rf ${(q)TARGET_APP}
+/usr/bin/ditto --noextattr --norsrc ${(q)SOURCE_APP} ${(q)TARGET_APP}
+xattr -dr com.apple.quarantine ${(q)TARGET_APP} 2>/dev/null || true
+xattr -cr ${(q)TARGET_APP} 2>/dev/null || true
+spctl --add --label Sniplet ${(q)TARGET_APP} 2>/dev/null || true
+spctl --enable --label Sniplet 2>/dev/null || true
+EOF
+)
+
+if ! /usr/bin/osascript <<'APPLESCRIPT' "$privileged_command"
+on run argv
+    try
+        do shell script (item 1 of argv) with administrator privileges
+    on error errMsg number errNum
+        if errNum is -128 then
+            error "Installation canceled."
+        end if
+        error errMsg
+    end try
+end run
+APPLESCRIPT
+then
+  echo "Installation was canceled or could not finish."
+  exit 1
+fi
 
 echo
 echo "Sniplet is installed at:"
 echo "$TARGET_APP"
 
-if [[ -n "$INSTALLING_USER" ]]; then
-  install_uid="$(id -u "$INSTALLING_USER" 2>/dev/null || true)"
-  if [[ -n "$install_uid" ]]; then
-    launchctl asuser "$install_uid" open "$TARGET_APP" 2>/dev/null || true
-  else
-    open "$TARGET_APP" 2>/dev/null || true
-  fi
-else
-  open "$TARGET_APP" 2>/dev/null || true
-fi
+open "$TARGET_APP" 2>/dev/null || true
 
-echo "If macOS still asks for confirmation on a Mac you trust, choose Open once and Sniplet should launch."
+echo "Sniplet was also approved for this Mac so Gatekeeper is less likely to block the first launch."
