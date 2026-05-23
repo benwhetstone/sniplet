@@ -7,7 +7,7 @@ Sniplet is a lightweight macOS screenshot app built to feel closer to Windows Sn
 - automatic clipboard copy
 - optional default screenshot folder
 - optional markup-after-capture flow
-- edited screenshots overwrite the original saved PNG
+- edited screenshots overwrite the original saved image file
 - menu bar UI with a minimalist preferences window
 - launch-at-login support in app-bundle builds
 
@@ -29,7 +29,7 @@ Markup mode opens a simple editor with:
 - undo
 - save
 
-When you save from markup mode, Sniplet overwrites the original PNG in your configured screenshot folder and refreshes the clipboard with the edited image.
+When you save from markup mode, Sniplet overwrites the original saved image in your configured screenshot folder and refreshes the clipboard with the edited image.
 
 ## Build And Run
 
@@ -54,13 +54,13 @@ swift scripts/generate_icon.swift
 That creates a runnable app bundle here:
 
 ```bash
-/Users/benwhetstone/Documents/Sniplet/dist/Sniplet.app
+/Users/benwhetstone/Documents/Software Projects/Sniplet/dist/Sniplet.app
 ```
 
 You can launch it with Finder or:
 
 ```bash
-open "/Users/benwhetstone/Documents/Sniplet/dist/Sniplet.app"
+open "/Users/benwhetstone/Documents/Software Projects/Sniplet/dist/Sniplet.app"
 ```
 
 ## Launch At Login Note

@@ -37,6 +37,12 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
 
+                                Button("Trash Saved Captures") {
+                                    settings.trashScreenshotFolderContents()
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(settings.selectedFolderPath == nil)
+
                                 Button("Clear Folder") {
                                     settings.clearFolder()
                                 }
@@ -53,6 +59,13 @@ struct SettingsView: View {
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
+
+                            if let storageMessage = settings.storageMessage {
+                                Text(storageMessage)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(Color(red: 0.33, green: 0.39, blue: 0.22))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
 

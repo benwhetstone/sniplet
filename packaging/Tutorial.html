@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sniplet Tutorial</title>
+  <style>
+    :root {
+      --bg1: #f5f8fb;
+      --bg2: #e6eef6;
+      --card: rgba(255,255,255,0.78);
+      --line: rgba(255,255,255,0.7);
+      --text: #16304b;
+      --muted: #587188;
+      --accent: #2577ff;
+      --shadow: rgba(24, 52, 84, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-rounded, "SF Pro Rounded", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 20px 44px;
+    }
+    .hero, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: 0 18px 40px var(--shadow);
+      backdrop-filter: blur(20px);
+    }
+    .hero {
+      padding: 28px;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+      line-height: 1.05;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      padding: 22px;
+    }
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+    }
+    ol, ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    li {
+      margin: 0 0 10px;
+      line-height: 1.45;
+    }
+    .feature {
+      margin-bottom: 12px;
+    }
+    .feature strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .pill {
+      display: inline-block;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(37,119,255,0.12);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="pill">Sniplet Help</div>
+      <h1>How To Use Sniplet</h1>
+      <p>Use this guide when setting up Sniplet for the first time, learning the markup tools, or checking how updates work. This file opens from the Sniplet dropdown so it can travel with the app.</p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <p class="eyebrow">First-Time Setup</p>
+        <h2>Permissions</h2>
+        <ol>
+          <li>Install Sniplet into <strong>Applications</strong>.</li>
+          <li>Open Sniplet from the menu bar.</li>
+          <li>Click <strong>Request Screen Recording Access</strong>.</li>
+          <li>When macOS asks, approve Sniplet for Screen Recording.</li>
+          <li>If System Settings opens, turn on Sniplet in the Screen Recording list.</li>
+          <li>Return to Sniplet and try a capture again.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Capture</p>
+        <h2>Shortcuts</h2>
+        <div class="feature"><strong>Control-Shift-4</strong><span class="muted">Capture a selected area.</span></div>
+        <div class="feature"><strong>Control-Shift-3</strong><span class="muted">Capture the current screen.</span></div>
+        <div class="feature"><strong>Control-Option-4</strong><span class="muted">Capture a selected area and open markup.</span></div>
+        <div class="feature"><strong>Control-Option-3</strong><span class="muted">Capture the current screen and open markup.</span></div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Markup</p>
+        <h2>Editing Existing Markups</h2>
+        <ul>
+          <li>Switch to <strong>Move</strong>.</li>
+          <li>Click a markup once to select it.</li>
+          <li>Drag the selected markup to reposition it.</li>
+          <li>Use the visible resize handles on box-style markups like blur and redact.</li>
+          <li>Use <strong>Delete Selected</strong> to remove the selected markup before saving.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Tools</p>
+        <h2>What The Tools Do</h2>
+        <div class="feature"><strong>Pen</strong><span class="muted">Freehand markups.</span></div>
+        <div class="feature"><strong>Highlight</strong><span class="muted">Translucent emphasis over text or content.</span></div>
+        <div class="feature"><strong>Arrow, Box, Circle</strong><span class="muted">Callouts and shape annotations.</span></div>
+        <div class="feature"><strong>Blur</strong><span class="muted">Hide sensitive details with a blur region.</span></div>
+        <div class="feature"><strong>Redact</strong><span class="muted">Hide content with a solid black box.</span></div>
+        <div class="feature"><strong>Text</strong><span class="muted">Click to place text directly on the image.</span></div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Crop</p>
+        <h2>Crop The Right Way</h2>
+        <ul>
+          <li>Click <strong>Start Crop</strong>.</li>
+          <li>Drag the exact area you want to keep.</li>
+          <li>Use a crop preset if you want to lock the crop box to a specific ratio.</li>
+          <li>Click <strong>Apply Crop</strong> to keep only that area.</li>
+          <li>Click <strong>Cancel Crop</strong> to back out.</li>
+          <li>Click <strong>Revert Original</strong> to go back to the original capture.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Saving</p>
+        <h2>Sharing And File Size</h2>
+        <ul>
+          <li><strong>Save and Close</strong> saves the edited image and refreshes the clipboard.</li>
+          <li>Saved captures use compressed JPG output to keep file sizes practical for messaging and sharing.</li>
+          <li>If you cannot paste into a target app, try recapturing at a smaller area or avoiding unnecessary markup layers.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Updates</p>
+        <h2>How To Update</h2>
+        <ul>
+          <li>Click <strong>Update Sniplet</strong> from the menu.</li>
+          <li>Sniplet looks for a newer local build and replaces the installed app.</li>
+          <li>Use <strong>About Sniplet</strong> to check the current version after an update.</li>
+        </ul>
+      </section>
+    </div>
+
+    <p class="footer">If Sniplet changes, this help file should be updated with the new behavior so the in-app instructions stay accurate.</p>
+  </div>
+</body>
+</html>

@@ -12,6 +12,7 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 PLIST_TEMPLATE="$ROOT_DIR/packaging/Info.plist"
 PLIST_PATH="$CONTENTS_DIR/Info.plist"
 ICON_PATH="$ROOT_DIR/packaging/Sniplet.icns"
+TUTORIAL_PATH="$ROOT_DIR/packaging/Tutorial.html"
 
 mkdir -p "$ROOT_DIR/dist"
 
@@ -22,14 +23,21 @@ EXECUTABLE="$BUILD_DIR/$APP_NAME"
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
-cp "$EXECUTABLE" "$MACOS_DIR/$APP_NAME"
-cp "$PLIST_TEMPLATE" "$PLIST_PATH"
+/usr/bin/ditto --noextattr --norsrc "$EXECUTABLE" "$MACOS_DIR/$APP_NAME"
+/usr/bin/ditto --noextattr --norsrc "$PLIST_TEMPLATE" "$PLIST_PATH"
 if [[ -f "$ICON_PATH" ]]; then
-  cp "$ICON_PATH" "$RESOURCES_DIR/$APP_NAME.icns"
+  /usr/bin/ditto --noextattr --norsrc "$ICON_PATH" "$RESOURCES_DIR/$APP_NAME.icns"
+fi
+if [[ -f "$TUTORIAL_PATH" ]]; then
+  /usr/bin/ditto --noextattr --norsrc "$TUTORIAL_PATH" "$RESOURCES_DIR/Tutorial.html"
 fi
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-xattr -cr "$APP_DIR"
+find "$APP_DIR" -exec xattr -c {} + 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.provenance {} + 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d "com.apple.fileprovider.fpfs#P" {} + 2>/dev/null || true
+xattr -cr "$APP_DIR" 2>/dev/null || true
 codesign --force --deep --sign - "$APP_DIR"
 
 echo "Packaged app:"

@@ -53,3 +53,69 @@
 - Build version: `20260401.2`
 - Surfaced that version/build string in the About menu and About dialog.
 - Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.
+
+### Crop And Sharing Pass
+- Replaced the old preset-driven center crop behavior with the start of a real crop-selection mode.
+- Crop now begins with a drawn selection on the image, and aspect presets constrain the crop box instead of blindly center-cropping.
+- Added `Cancel Crop` alongside `Apply Crop` and kept `Revert Original` available to return to the uncropped image state.
+- Tightened clipboard and saved-image sizing further by lowering the normalized export dimension and JPEG quality target to improve paste/share compatibility.
+- Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.
+
+### Edit Loop And Packaging Reliability
+- Strengthened selection/editability by adding a `Delete Selected` action in the markup toolbar.
+- Switched move-mode hit testing to use on-screen selection geometry so selecting and manipulating existing markups is more direct.
+- Fixed the packaging pipeline to copy files without extended attributes and explicitly clear problematic Finder/file-provider metadata before codesign.
+- Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.
+
+### Selection And Move Tightening
+- Added an explicit click-to-select path in move mode using spatial tap location instead of relying only on drag-start behavior.
+- Clamped moved annotation positions so items stay inside the editable canvas instead of drifting outside the image.
+- Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.
+
+### Browser Tutorial
+- Added a bundled `Tutorial & Help` page that opens in the user’s default browser from the Sniplet dropdown menu.
+- Packaged the tutorial HTML inside the app resources so it ships with the installed app.
+- Included setup guidance, permissions help, feature explanations, crop instructions, sharing notes, and update instructions in one place for non-technical users.
+- Rebuilt the app, regenerated the installer DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app.
+
+### Naming Recovery
+- Found another round of internal naming drift where the app package was still `Sniplet` but the Swift target, source folder, test target, and app entry point still used `Snipboard`.
+- Renamed the executable target and source/test folders back to `Sniplet` so the codebase matches the shipped app name again.
+- Kept project memory updated here and in `PROJECT_NOTES.md` so the rename is easier to recover if thread context is lost again.
+
+### Rebuild And Reinstall
+- Rebuilt the current `Sniplet` app bundle from the renamed `Sniplet` target structure.
+- Regenerated the installer DMG at `dist/Sniplet-Installer.dmg`.
+- Replaced `/Applications/Sniplet.app` with the freshly packaged app and relaunched the installed copy.
+
+### Export Reliability Pass
+- Replaced the fixed JPG export quality with an adaptive compression budget that scales with image area, which should keep saved screenshot sizes more predictable while preserving more detail on smaller captures.
+- Kept clipboard and saved-file output on the same normalized rendered image path so edited output stays aligned across both destinations.
+- Changed overwrite saves to write through a temporary file replacement step before swapping in the edited file.
+- Added coverage for export sizing helpers in `SnipletTests`.
+
+### Packaging Hardening Follow-Up
+- Packaging failed again because the app bundle still carried stubborn macOS metadata like `com.apple.provenance` and `FinderInfo`.
+- Strengthened `scripts/package_app.sh` to recursively strip extended attributes before codesigning.
+- Rebuilt the app, regenerated the DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed app successfully after the packaging fix.
+
+### Texting File Size Tightening
+- Lowered the export long-edge cap from `2200` to `1800` pixels.
+- Reduced the adaptive JPG byte budget and quality ladder so saved captures stay smaller for texting workflows.
+- Rebuilt the app, regenerated the DMG, replaced `/Applications/Sniplet.app`, and relaunched the installed copy.
+
+### Move And Resize Interaction Rewrite
+- Revisited the interaction problem against Apple’s guidance and confirmed `Canvas` is for immediate-mode drawing, not interactive per-element editing.
+- Replaced the SwiftUI drag-based interaction path with an AppKit-backed overlay that handles `mouseDown`, `mouseDragged`, and `mouseUp` directly over the image.
+- Kept selection, move, and resize logic in the editor state model, but now drive it from deterministic mouse events instead of SwiftUI gesture sequencing.
+- Rebuilt, re-signed, replaced `/Applications/Sniplet.app`, and relaunched the installed copy with the new interaction layer.
+
+## 2026-04-04
+
+### Geometry And Save Reliability Pass
+- Centralized crop, movement, and text-overlay geometry into shared helpers so the editor uses one consistent layout model instead of drifted copies.
+- Fixed text hit-testing and selection boxes so text annotations are treated as leading-anchored overlays instead of being incorrectly centered for editing.
+- Improved `Undo` and `Clear` so they also clean up in-progress crop and editor interaction state instead of only removing committed annotations.
+- Prevented saved-capture filename collisions by suffixing repeated timestamps instead of silently reusing the same `.jpg` name.
+- Added targeted tests for crop mapping, constrained crop ratios, bounded movement, text selection geometry, export sizing, and filename collision handling.
+- Rebuilt the app, repackaged `dist/Sniplet.app`, and relaunched the packaged copy.

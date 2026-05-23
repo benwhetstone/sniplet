@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-enum SnipboardApp {
+enum SnipletApp {
     static func main() {
         let application = NSApplication.shared
         let delegate = AppDelegate()

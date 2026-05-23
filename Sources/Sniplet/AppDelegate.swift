@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: NSWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if focusExistingInstanceIfNeeded() {
+            NSApplication.shared.terminate(nil)
+            return
+        }
+
         setupStatusItem()
         setupHotKeys()
         settings.refreshLaunchAtLoginState()
@@ -77,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         menu.addItem(NSMenuItem.separator())
         menu.addItem(menuItem(title: "About \(aboutMenuTitle)", action: #selector(showAbout)))
+        menu.addItem(menuItem(title: "Tutorial & Help", action: #selector(showTutorial)))
         menu.addItem(menuItem(title: "Preferences…", action: #selector(showPreferences), keyEquivalent: ","))
         menu.addItem(menuItem(title: "Update Sniplet", action: #selector(updateApp)))
         menu.addItem(menuItem(title: "Request Screen Recording Access", action: #selector(requestPermissions)))
@@ -169,6 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func showTutorial() {
+        if let tutorialURL = Bundle.main.url(forResource: "Tutorial", withExtension: "html") {
+            NSWorkspace.shared.open(tutorialURL)
+        }
+    }
+
+    @objc
     private func requestPermissions() {
         captureController.requestScreenRecordingAccess()
     }
@@ -203,6 +216,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         settingsWindowController = controller
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func focusExistingInstanceIfNeeded() -> Bool {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return false }
+
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        guard let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            .first(where: { $0.processIdentifier != currentPID }) else {
+            return false
+        }
+
+        existing.activate(options: [.activateIgnoringOtherApps])
+        return true
     }
 
     private var aboutMenuTitle: String {

@@ -44,6 +44,15 @@ Sniplet is a macOS screenshot and markup app being shaped into a fast, dependabl
 - Markup UX still needs polish so all tools feel consistent and predictable.
 - Need stronger confidence that save-to-disk and clipboard output always match the edited result.
 - Need real-world validation that the latest move, resize, blur, and alignment fixes feel correct in use.
+- Crop behavior is now being shifted from center-crop resizing into a real user-drawn crop-selection workflow.
+- Clipboard/export sizing was tightened further to improve sharing and pasting into texting apps.
+- Packaging script now strips problematic macOS metadata before codesigning so app packaging stays reliable.
+- Built-in tutorial/help is now packaged with the app and opened from the menu in the user’s default browser.
+- Package/module naming had drifted internally to `Snipboard`; it has now been brought back in line with the product name `Sniplet`.
+- Export now uses an adaptive JPG compression budget instead of one fixed quality level so saved captures land in a more predictable size range.
+- Export was tightened again for texting workflows by lowering the max long edge and overall JPG byte budget.
+- Overwrite saves now write through a temporary replacement path before swapping the edited file into place.
+- Packaging cleanup was tightened again to recursively strip stubborn macOS extended attributes before codesigning.
 
 ## High-Value Next Work
 - Finish export/file-size reliability work.

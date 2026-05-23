@@ -9,15 +9,15 @@ let package = Package(
         .macOS(.v13),
     ],
     products: [
-        .executable(name: "Sniplet", targets: ["Snipboard"]),
+        .executable(name: "Sniplet", targets: ["Sniplet"]),
     ],
     targets: [
         .executableTarget(
-            name: "Snipboard"
+            name: "Sniplet"
         ),
         .testTarget(
-            name: "SnipboardTests",
-            dependencies: ["Snipboard"]
+            name: "SnipletTests",
+            dependencies: ["Sniplet"]
         ),
     ],
     swiftLanguageModes: [.v6]

@@ -15,6 +15,7 @@ final class AppSettings: ObservableObject {
     @Published private(set) var selectedFolderPath: String?
     @Published private(set) var launchAtLoginEnabled = false
     @Published private(set) var launchAtLoginMessage: String?
+    @Published private(set) var storageMessage: String?
 
     var hasCompletedOnboarding: Bool {
         get { defaults.bool(forKey: Keys.hasCompletedOnboarding) }
@@ -46,6 +47,55 @@ final class AppSettings: ObservableObject {
     func clearFolder() {
         defaults.removeObject(forKey: Keys.folderBookmark)
         selectedFolderPath = nil
+        storageMessage = nil
+    }
+
+    func trashScreenshotFolderContents() {
+        guard let folderURL = screenshotFolderURL() else {
+            storageMessage = "Choose a screenshot folder first."
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Send Saved Captures To Trash?"
+        alert.informativeText = "Sniplet will move everything inside your screenshot folder to the Trash. The folder itself will stay in place."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Send To Trash")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard folderURL.startAccessingSecurityScopedResource() else {
+            storageMessage = "Sniplet could not access the screenshot folder."
+            return
+        }
+        defer { folderURL.stopAccessingSecurityScopedResource() }
+
+        do {
+            let fileManager = FileManager.default
+            let contents = try fileManager.contentsOfDirectory(
+                at: folderURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+
+            guard !contents.isEmpty else {
+                storageMessage = "The screenshot folder is already empty."
+                return
+            }
+
+            var trashedCount = 0
+            for itemURL in contents {
+                var resultingURL: NSURL?
+                try fileManager.trashItem(at: itemURL, resultingItemURL: &resultingURL)
+                trashedCount += 1
+            }
+
+            storageMessage = trashedCount == 1
+                ? "Moved 1 item to the Trash."
+                : "Moved \(trashedCount) items to the Trash."
+        } catch {
+            storageMessage = "Sniplet could not move the folder contents to the Trash."
+        }
     }
 
     func screenshotFolderURL() -> URL? {
@@ -109,6 +159,7 @@ final class AppSettings: ObservableObject {
         )
         defaults.set(bookmark, forKey: Keys.folderBookmark)
         selectedFolderPath = url.path
+        storageMessage = nil
     }
 }
 

@@ -107,6 +107,7 @@ final class CaptureController {
         let shouldSave = settings.saveToDisk || shouldOpenMarkup
         let savedCapture = ClipboardWriter.copy(
             image: croppedImage,
+            displaySize: rect.size,
             saveTo: shouldSave ? settings.screenshotFolderURL() : nil
         )
 
@@ -124,22 +125,11 @@ final class CaptureController {
     }
 
     private func cropRect(for selection: CGRect, within screenFrame: CGRect, image: CGImage) -> CGRect? {
-        let intersection = selection.intersection(screenFrame).integral
-        guard !intersection.isNull, !intersection.isEmpty else {
-            return nil
-        }
-
-        let scaleX = CGFloat(image.width) / screenFrame.width
-        let scaleY = CGFloat(image.height) / screenFrame.height
-        let localMinX = intersection.minX - screenFrame.minX
-        let localMaxY = intersection.maxY - screenFrame.minY
-
-        return CGRect(
-            x: localMinX * scaleX,
-            y: CGFloat(image.height) - (localMaxY * scaleY),
-            width: intersection.width * scaleX,
-            height: intersection.height * scaleY
-        ).integral
+        SnipletGeometry.captureCropRect(
+            selection: selection,
+            within: screenFrame,
+            imageSize: CGSize(width: image.width, height: image.height)
+        )
     }
 
     private func showAlert(title: String, message: String) {

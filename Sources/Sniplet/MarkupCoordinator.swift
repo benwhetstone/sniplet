@@ -22,7 +22,7 @@ final class MarkupCoordinator {
             initialImage: capture.image,
             fileURL: capture.fileURL
         ) { [weak self] image, url in
-            let success = ClipboardWriter.overwrite(image: image, at: url)
+            let success = ClipboardWriter.overwrite(image: image, at: url, displaySize: capture.displaySize)
             if !success {
                 let alert = NSAlert()
                 alert.messageText = "Save Failed"
@@ -211,9 +211,11 @@ private enum MoveInteraction {
 }
 
 private struct MarkupEditorView: View {
+    let originalImage: NSImage
     @State private var canvasImage: NSImage
     let fileURL: URL
     let onSave: (NSImage, URL) -> Void
+    @FocusState private var editorIsFocused: Bool
 
     @State private var tool: MarkupTool = .pen
     @State private var items: [MarkupItem] = []
@@ -226,16 +228,19 @@ private struct MarkupEditorView: View {
     @State private var textBackgroundChoice: TextBackgroundChoice = .clear
     @State private var editingText: EditingTextState?
     @State private var selectedItemID: UUID?
-    @State private var draggingItemID: UUID?
     @State private var draggingLastPoint: CGPoint?
     @State private var moveInteraction: MoveInteraction = .none
     @State private var cropPreset: CropPreset = .freeform
+    @State private var isCropMode = false
+    @State private var cropDragStart: CGPoint?
+    @State private var cropSelection: CGRect?
 
     private let suggestedSymbols = ["→", "↗", "★", "✓", "✕", "!", "?", "❤"]
     private static let blurRadius: Double = 18
     private static let ciContext = CIContext(options: nil)
 
     init(initialImage: NSImage, fileURL: URL, onSave: @escaping (NSImage, URL) -> Void) {
+        self.originalImage = initialImage
         _canvasImage = State(initialValue: initialImage)
         self.fileURL = fileURL
         self.onSave = onSave
@@ -270,9 +275,33 @@ private struct MarkupEditorView: View {
                         if tool == .move, let selectedItem {
                             drawSelection(for: selectedItem, in: imageFrame, with: &context)
                         }
+
+                        if isCropMode, let cropSelection {
+                            drawCropSelection(cropSelection, in: imageFrame, with: &context)
+                        }
                     }
-                    .contentShape(Rectangle())
-                    .gesture(interactionGesture(imageFrame: imageFrame))
+
+                    MarkupInteractionOverlay(
+                        onMouseDown: { location in
+                            handleMouseDown(at: translatedCanvasLocation(from: location, imageFrame: imageFrame), imageFrame: imageFrame)
+                        },
+                        onMouseDragged: { startLocation, currentLocation in
+                            handleMouseDragged(
+                                from: translatedCanvasLocation(from: startLocation, imageFrame: imageFrame),
+                                to: translatedCanvasLocation(from: currentLocation, imageFrame: imageFrame),
+                                imageFrame: imageFrame
+                            )
+                        },
+                        onMouseUp: { startLocation, endLocation in
+                            handleMouseUp(
+                                from: translatedCanvasLocation(from: startLocation, imageFrame: imageFrame),
+                                to: translatedCanvasLocation(from: endLocation, imageFrame: imageFrame),
+                                imageFrame: imageFrame
+                            )
+                        }
+                    )
+                    .frame(width: imageFrame.width, height: imageFrame.height)
+                    .position(x: imageFrame.midX, y: imageFrame.midY)
 
                     if let editingText {
                         inlineEditor(for: editingText, imageFrame: imageFrame)
@@ -282,8 +311,16 @@ private struct MarkupEditorView: View {
 
             bottomBar
         }
+        .focusable()
+        .focused($editorIsFocused)
         .onChange(of: tool) { _ in
             commitInlineTextIfNeeded()
+        }
+        .onDeleteCommand {
+            deleteSelectedItem()
+        }
+        .onAppear {
+            editorIsFocused = true
         }
     }
 
@@ -307,19 +344,22 @@ private struct MarkupEditorView: View {
                 Spacer(minLength: 0)
 
                 Button("Undo") {
-                    _ = items.popLast()
-                    selectedItemID = nil
+                    undoLastAction()
                 }
                 .buttonStyle(.bordered)
-                .disabled(items.isEmpty && editingText == nil)
+                .disabled(items.isEmpty && editingText == nil && activePoints.isEmpty && cropSelection == nil && !isCropMode)
 
                 Button("Clear") {
-                    items.removeAll()
-                    editingText = nil
-                    selectedItemID = nil
+                    clearAnnotations()
                 }
                 .buttonStyle(.bordered)
-                .disabled(items.isEmpty && editingText == nil)
+                .disabled(items.isEmpty && editingText == nil && activePoints.isEmpty && cropSelection == nil)
+
+                Button("Delete Selected") {
+                    deleteSelectedItem()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canDeleteSelection)
             }
 
             HStack(spacing: 14) {
@@ -379,11 +419,28 @@ private struct MarkupEditorView: View {
                 .pickerStyle(.menu)
                 .frame(width: 170)
 
-                Button("Apply Crop") {
-                    applyCropPreset()
+                Button(isCropMode ? "Apply Crop" : "Start Crop") {
+                    if isCropMode {
+                        applyCropSelection()
+                    } else {
+                        beginCropMode()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(cropPreset == .freeform)
+                .disabled(isCropMode && cropSelection == nil)
+
+                if isCropMode {
+                    Button("Cancel Crop") {
+                        cancelCropMode()
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Button("Revert Original") {
+                    revertToOriginal()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!hasEditedBaseImage)
             }
         }
         .padding(18)
@@ -427,6 +484,10 @@ private struct MarkupEditorView: View {
         switch tool {
         case .move:
             return "Selections stay editable. Click an annotation any time to move or resize it."
+        case _ where isCropMode:
+            return cropPreset == .freeform
+                ? "Drag the area you want to keep, then apply the crop."
+                : "Drag the area you want to keep. The crop box stays locked to the selected ratio."
         case .blur:
             return "Blur creates a privacy region you can come back and resize later."
         case .redact:
@@ -448,88 +509,156 @@ private struct MarkupEditorView: View {
         }
     }
 
-    private func interactionGesture(imageFrame: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                commitInlineTextIfNeeded()
+    private func translatedCanvasLocation(from localLocation: CGPoint, imageFrame: CGRect) -> CGPoint {
+        CGPoint(x: imageFrame.minX + localLocation.x, y: imageFrame.minY + localLocation.y)
+    }
 
-                if tool == .move {
-                    guard let point = normalizedPoint(from: value.location, imageFrame: imageFrame) else { return }
+    private func handleMouseDown(at location: CGPoint, imageFrame: CGRect) {
+        commitInlineTextIfNeeded()
 
-                    switch moveInteraction {
-                    case .none:
-                        if let selectedItemID,
-                           let handle = hitTestResizeHandle(at: value.location, imageFrame: imageFrame, itemID: selectedItemID) {
-                            moveInteraction = .resizeShape(selectedItemID, handle)
-                            draggingLastPoint = point
-                        } else if let hitItem = hitTestItem(at: point) {
-                            selectedItemID = hitItem.id
-                            moveInteraction = .moveItem(hitItem.id)
-                            draggingLastPoint = point
-                        }
-                    case .moveItem(let itemID):
-                        if let lastPoint = draggingLastPoint {
-                            let delta = CGPoint(x: point.x - lastPoint.x, y: point.y - lastPoint.y)
-                            moveItem(withID: itemID, by: delta)
-                            draggingLastPoint = point
-                        }
-                    case .resizeShape(let itemID, let handle):
-                        resizeShape(withID: itemID, handle: handle, to: point)
-                        draggingLastPoint = point
-                    }
-                    return
+        if isCropMode {
+            cropDragStart = normalizedPoint(from: location, imageFrame: imageFrame)
+            return
+        }
+
+        if tool == .move {
+            guard let point = normalizedPoint(from: location, imageFrame: imageFrame) else { return }
+            beginMoveInteraction(
+                at: location,
+                imageFrame: imageFrame,
+                startPoint: point,
+                currentPoint: point
+            )
+            return
+        }
+
+        guard tool.drawsByDrag,
+              let point = normalizedPoint(from: location, imageFrame: imageFrame)
+        else {
+            return
+        }
+
+        activePoints = [point]
+    }
+
+    private func handleMouseDragged(from startLocation: CGPoint, to currentLocation: CGPoint, imageFrame: CGRect) {
+        commitInlineTextIfNeeded()
+
+        if isCropMode {
+            guard let point = normalizedPoint(from: currentLocation, imageFrame: imageFrame) else { return }
+            if cropDragStart == nil {
+                cropDragStart = normalizedPoint(from: startLocation, imageFrame: imageFrame)
+            }
+            if let cropDragStart {
+                cropSelection = constrainedCropRect(from: cropDragStart, to: point)
+            }
+            return
+        }
+
+        if tool == .move {
+            guard let point = normalizedPoint(from: currentLocation, imageFrame: imageFrame) else { return }
+            let startPoint = normalizedPoint(from: startLocation, imageFrame: imageFrame)
+
+            switch moveInteraction {
+            case .none:
+                beginMoveInteraction(
+                    at: startLocation,
+                    imageFrame: imageFrame,
+                    startPoint: startPoint,
+                    currentPoint: point
+                )
+            case .moveItem(let itemID):
+                if let lastPoint = draggingLastPoint {
+                    let delta = CGPoint(x: point.x - lastPoint.x, y: point.y - lastPoint.y)
+                    moveItem(withID: itemID, by: delta)
+                    draggingLastPoint = point
                 }
+            case .resizeShape(let itemID, let handle):
+                resizeShape(withID: itemID, handle: handle, to: point)
+                draggingLastPoint = point
+            }
+            return
+        }
 
-                guard tool.drawsByDrag else { return }
-                guard let point = normalizedPoint(from: value.location, imageFrame: imageFrame) else { return }
+        guard tool.drawsByDrag,
+              let point = normalizedPoint(from: currentLocation, imageFrame: imageFrame)
+        else {
+            return
+        }
 
-                if activePoints.isEmpty {
-                    activePoints = [point]
-                } else if tool == .pen || tool == .highlighter {
-                    activePoints.append(point)
-                } else {
-                    activePoints = [activePoints.first ?? point, point]
+        if activePoints.isEmpty {
+            activePoints = [point]
+        } else if tool == .pen || tool == .highlighter {
+            activePoints.append(point)
+        } else {
+            activePoints = [activePoints.first ?? point, point]
+        }
+    }
+
+    private func handleMouseUp(from startLocation: CGPoint, to endLocation: CGPoint, imageFrame: CGRect) {
+        let moved = abs(endLocation.x - startLocation.x) + abs(endLocation.y - startLocation.y)
+
+        if isCropMode {
+            guard let point = normalizedPoint(from: endLocation, imageFrame: imageFrame) else {
+                cropDragStart = nil
+                return
+            }
+            if let cropDragStart {
+                cropSelection = constrainedCropRect(from: cropDragStart, to: point)
+            }
+            cropDragStart = nil
+            return
+        }
+
+        if tool == .move {
+            if let point = normalizedPoint(from: endLocation, imageFrame: imageFrame) {
+                switch moveInteraction {
+                case .moveItem(let itemID):
+                    if let lastPoint = draggingLastPoint {
+                        let delta = CGPoint(x: point.x - lastPoint.x, y: point.y - lastPoint.y)
+                        moveItem(withID: itemID, by: delta)
+                    }
+                case .resizeShape(let itemID, let handle):
+                    resizeShape(withID: itemID, handle: handle, to: point)
+                case .none:
+                    break
                 }
             }
-            .onEnded { value in
-                let moved = abs(value.translation.width) + abs(value.translation.height)
 
-                if tool == .move {
-                    if moved < 4,
-                       let point = normalizedPoint(from: value.location, imageFrame: imageFrame),
-                       hitTestItem(at: point) == nil {
-                        selectedItemID = nil
-                    }
-                    moveInteraction = .none
-                    draggingLastPoint = nil
-                    return
-                }
-
-                if tool.drawsByDrag {
-                    guard let point = normalizedPoint(from: value.location, imageFrame: imageFrame) else {
-                        activePoints.removeAll()
-                        return
-                    }
-
-                    if tool == .pen || tool == .highlighter {
-                        activePoints.append(point)
-                    } else if activePoints.count == 1 {
-                        activePoints.append(point)
-                    }
-
-                    defer { activePoints.removeAll() }
-                    guard let item = finalizedItem(from: activePoints) else { return }
-                    items.append(item)
-                    selectedItemID = item.id
-                    return
-                }
-
-                guard moved < 8,
-                      let point = normalizedPoint(from: value.location, imageFrame: imageFrame)
-                else { return }
-
-                handleTapDrivenTool(at: point)
+            if moved < 4 {
+                selectItem(at: endLocation, imageFrame: imageFrame)
             }
+            moveInteraction = .none
+            draggingLastPoint = nil
+            return
+        }
+
+        if tool.drawsByDrag {
+            guard let point = normalizedPoint(from: endLocation, imageFrame: imageFrame) else {
+                activePoints.removeAll()
+                return
+            }
+
+            if tool == .pen || tool == .highlighter {
+                activePoints.append(point)
+            } else if activePoints.count == 1 {
+                activePoints.append(point)
+            }
+
+            defer { activePoints.removeAll() }
+            guard let item = finalizedItem(from: activePoints) else { return }
+            items.append(item)
+            selectedItemID = item.id
+            return
+        }
+
+        guard moved < 8,
+              let point = normalizedPoint(from: endLocation, imageFrame: imageFrame)
+        else {
+            return
+        }
+
+        handleTapDrivenTool(at: point)
     }
 
     private func handleTapDrivenTool(at point: CGPoint) {
@@ -623,32 +752,128 @@ private struct MarkupEditorView: View {
         }
     }
 
-    private func applyCropPreset() {
+    private func beginCropMode() {
         commitInlineTextIfNeeded()
-        guard let ratio = cropPreset.ratio else { return }
+        isCropMode = true
+        cropDragStart = nil
+        cropSelection = nil
+        selectedItemID = nil
+    }
+
+    private func cancelCropMode() {
+        isCropMode = false
+        cropDragStart = nil
+        cropSelection = nil
+    }
+
+    private func applyCropSelection() {
+        commitInlineTextIfNeeded()
+        guard let selection = cropSelection else { return }
 
         let rendered = renderImage()
-        let size = rendered.size
-        let currentRatio = size.width / max(size.height, 1)
-        var cropRect = CGRect(origin: .zero, size: size)
+        let cropRect = CGRect(
+            x: selection.minX * rendered.size.width,
+            y: (1 - selection.maxY) * rendered.size.height,
+            width: selection.width * rendered.size.width,
+            height: selection.height * rendered.size.height
+        ).integral
 
-        if currentRatio > ratio {
-            let newWidth = size.height * ratio
-            cropRect.origin.x = (size.width - newWidth) / 2
-            cropRect.size.width = newWidth
-        } else {
-            let newHeight = size.width / ratio
-            cropRect.origin.y = (size.height - newHeight) / 2
-            cropRect.size.height = newHeight
-        }
-
-        guard let cropped = crop(image: rendered, to: cropRect.integral) else { return }
+        guard let cropped = crop(image: rendered, to: cropRect) else { return }
         canvasImage = cropped
         items.removeAll()
         editingText = nil
         activePoints.removeAll()
-        draggingItemID = nil
+        selectedItemID = nil
         draggingLastPoint = nil
+        isCropMode = false
+        cropDragStart = nil
+        cropSelection = nil
+        cropPreset = .freeform
+    }
+
+    private var hasEditedBaseImage: Bool {
+        !nsImageSizeEquals(canvasImage.size, originalImage.size)
+    }
+
+    private func revertToOriginal() {
+        commitInlineTextIfNeeded()
+        canvasImage = originalImage
+        items.removeAll()
+        selectedItemID = nil
+        editingText = nil
+        activePoints.removeAll()
+        draggingLastPoint = nil
+        cropPreset = .freeform
+        isCropMode = false
+        cropDragStart = nil
+        cropSelection = nil
+    }
+
+    private func deleteSelectedItem() {
+        if let editingText {
+            if let itemID = editingText.itemID {
+                items.removeAll { $0.id == itemID }
+            }
+            self.editingText = nil
+            selectedItemID = nil
+            moveInteraction = .none
+            draggingLastPoint = nil
+            return
+        }
+
+        guard let selectedItemID else { return }
+        items.removeAll { $0.id == selectedItemID }
+        self.selectedItemID = nil
+        moveInteraction = .none
+        draggingLastPoint = nil
+    }
+
+    private func undoLastAction() {
+        if isCropMode {
+            if cropSelection == nil && cropDragStart == nil {
+                isCropMode = false
+                return
+            }
+            cropSelection = nil
+            cropDragStart = nil
+            return
+        }
+
+        if let editingText {
+            selectedItemID = editingText.itemID
+            self.editingText = nil
+            moveInteraction = .none
+            draggingLastPoint = nil
+            return
+        }
+
+        if !activePoints.isEmpty {
+            activePoints.removeAll()
+            return
+        }
+
+        guard let removedItem = items.popLast() else { return }
+        if selectedItemID == removedItem.id {
+            selectedItemID = nil
+        }
+        moveInteraction = .none
+        draggingLastPoint = nil
+    }
+
+    private func clearAnnotations() {
+        items.removeAll()
+        editingText = nil
+        activePoints.removeAll()
+        selectedItemID = nil
+        moveInteraction = .none
+        draggingLastPoint = nil
+        isCropMode = false
+        cropSelection = nil
+        cropDragStart = nil
+    }
+
+    private var canDeleteSelection: Bool {
+        selectedItemID != nil || editingText?.itemID != nil
     }
 
     private var previewItem: MarkupItem? {
@@ -669,7 +894,9 @@ private struct MarkupEditorView: View {
             return .stroke(MarkupStroke(points: points, color: selectedColor.color, lineWidth: lineWidth, opacity: 1))
         case .highlighter:
             guard points.count >= 2 else { return nil }
-            return .stroke(MarkupStroke(points: points, color: selectedColor.color, lineWidth: lineWidth, opacity: 0.32))
+            let bounds = bounds(for: points)
+            let autoThickness = min(34, max(18, bounds.height * 1.35))
+            return .stroke(MarkupStroke(points: points, color: selectedColor.color, lineWidth: autoThickness, opacity: 0.32))
         case .arrow:
             guard points.count >= 2 else { return nil }
             return .shape(MarkupShape(kind: .arrow, start: points[0], end: points[1], color: selectedColor.color, lineWidth: lineWidth))
@@ -720,18 +947,24 @@ private struct MarkupEditorView: View {
             draw(shape: shape, in: frame, with: &context)
         case .text(let text):
             let point = map(point: text.anchor, into: frame)
+            let size = textSize(for: text.text, size: text.fontSize, choice: text.fontChoice)
             let textView = Text(text.text)
                 .font(swiftUIFont(size: text.fontSize, choice: text.fontChoice))
                 .foregroundColor(text.color)
-            let size = textSize(for: text.text, size: text.fontSize, choice: text.fontChoice)
             if text.backgroundChoice != .clear {
-                let rect = CGRect(x: point.x, y: point.y - (size.height / 2) - 4, width: size.width + 16, height: size.height + 8)
                 context.fill(
-                    Path(roundedRect: rect, cornerRadius: 8),
+                    Path(
+                        roundedRect: SnipletGeometry.textBackgroundRect(anchor: point, textSize: size),
+                        cornerRadius: 8
+                    ),
                     with: .color(text.backgroundChoice.color)
                 )
             }
-            context.draw(textView, at: CGPoint(x: point.x + 8, y: point.y), anchor: .leading)
+            context.draw(
+                textView,
+                at: SnipletGeometry.textDrawPoint(anchor: point, textSize: size),
+                anchor: .leading
+            )
         case .symbol(let symbol):
             let point = map(point: symbol.anchor, into: frame)
             let symbolView = Text(symbol.symbol)
@@ -772,7 +1005,7 @@ private struct MarkupEditorView: View {
         case .text(let text):
             let point = map(point: text.anchor, into: frame)
             let size = textSize(for: text.text, size: text.fontSize, choice: text.fontChoice)
-            return CGRect(x: point.x - 4, y: point.y - (size.height / 2) - 8, width: size.width + 24, height: size.height + 16)
+            return SnipletGeometry.textSelectionRect(anchor: point, textSize: size)
         case .symbol(let symbol):
             let point = map(point: symbol.anchor, into: frame)
             let attributed = NSAttributedString(
@@ -791,9 +1024,44 @@ private struct MarkupEditorView: View {
         }
     }
 
+    private func constrainedCropRect(from start: CGPoint, to end: CGPoint) -> CGRect {
+        SnipletGeometry.constrainedCropRect(from: start, to: end, aspectRatio: cropPreset.ratio)
+    }
+
+    private func drawCropSelection(_ selection: CGRect, in frame: CGRect, with context: inout GraphicsContext) {
+        let rect = CGRect(
+            x: frame.minX + selection.minX * frame.width,
+            y: frame.minY + (1 - selection.maxY) * frame.height,
+            width: selection.width * frame.width,
+            height: selection.height * frame.height
+        )
+
+        let topShade = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: max(0, rect.minY - frame.minY))
+        let bottomShade = CGRect(x: frame.minX, y: rect.maxY, width: frame.width, height: max(0, frame.maxY - rect.maxY))
+        let leftShade = CGRect(x: frame.minX, y: rect.minY, width: max(0, rect.minX - frame.minX), height: rect.height)
+        let rightShade = CGRect(x: rect.maxX, y: rect.minY, width: max(0, frame.maxX - rect.maxX), height: rect.height)
+
+        for shadedRect in [topShade, bottomShade, leftShade, rightShade] where shadedRect.width > 0 && shadedRect.height > 0 {
+            context.fill(Path(shadedRect), with: .color(.black.opacity(0.30)))
+        }
+
+        context.stroke(
+            Path(roundedRect: rect, cornerRadius: 12),
+            with: .color(.white),
+            style: StrokeStyle(lineWidth: 2, dash: [10, 6])
+        )
+    }
+
+    private func bounds(for points: [CGPoint]) -> CGRect {
+        guard let first = points.first else { return .zero }
+        return points.dropFirst().reduce(CGRect(origin: first, size: .zero)) { partial, point in
+            partial.union(CGRect(origin: point, size: .zero))
+        }
+    }
+
     private func resizeHandleRects(for rect: CGRect) -> [CGRect] {
         resizeHandleCenters(for: rect).values.map {
-            CGRect(x: $0.x - 5, y: $0.y - 5, width: 10, height: 10)
+            CGRect(x: $0.x - 7, y: $0.y - 7, width: 14, height: 14)
         }
     }
 
@@ -818,12 +1086,88 @@ private struct MarkupEditorView: View {
         }
 
         for (handle, center) in resizeHandleCenters(for: rect) {
-            let hitRect = CGRect(x: center.x - 12, y: center.y - 12, width: 24, height: 24)
+            let hitRect = CGRect(x: center.x - 18, y: center.y - 18, width: 36, height: 36)
             if hitRect.contains(location) {
                 return handle
             }
         }
         return nil
+    }
+
+    private func hitTestAnyResizeHandle(at location: CGPoint, imageFrame: CGRect) -> (UUID, ResizeHandle)? {
+        for item in items.reversed() {
+            guard case .shape(let shape) = item, isResizable(shape.kind) else { continue }
+            guard let rect = selectionRect(for: item, in: imageFrame) else { continue }
+
+            for (handle, center) in resizeHandleCenters(for: rect) {
+                let hitRect = CGRect(x: center.x - 18, y: center.y - 18, width: 36, height: 36)
+                if hitRect.contains(location) {
+                    return (item.id, handle)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func hitTestItem(at location: CGPoint, imageFrame: CGRect) -> MarkupItem? {
+        for item in items.reversed() {
+            guard let rect = selectionRect(for: item, in: imageFrame) else { continue }
+            if rect.insetBy(dx: -10, dy: -10).contains(location) {
+                return item
+            }
+        }
+        return nil
+    }
+
+    private func selectItem(at location: CGPoint, imageFrame: CGRect) {
+        if let hitItem = hitTestItem(at: location, imageFrame: imageFrame) {
+            selectedItemID = hitItem.id
+        } else {
+            selectedItemID = nil
+        }
+    }
+
+    private func beginMoveInteraction(
+        at location: CGPoint,
+        imageFrame: CGRect,
+        startPoint: CGPoint?,
+        currentPoint: CGPoint
+    ) {
+        if let (itemID, handle) = hitTestAnyResizeHandle(at: location, imageFrame: imageFrame) {
+            selectedItemID = itemID
+            moveInteraction = .resizeShape(itemID, handle)
+            if let startPoint, startPoint != currentPoint {
+                resizeShape(withID: itemID, handle: handle, to: currentPoint)
+            }
+            draggingLastPoint = currentPoint
+            return
+        }
+
+        if let selectedItemID,
+           let handle = hitTestResizeHandle(at: location, imageFrame: imageFrame, itemID: selectedItemID) {
+            moveInteraction = .resizeShape(selectedItemID, handle)
+            if let startPoint, startPoint != currentPoint {
+                resizeShape(withID: selectedItemID, handle: handle, to: currentPoint)
+            }
+            draggingLastPoint = currentPoint
+            return
+        }
+
+        guard let hitItem = hitTestItem(at: location, imageFrame: imageFrame) else {
+            selectedItemID = nil
+            moveInteraction = .none
+            draggingLastPoint = nil
+            return
+        }
+
+        selectedItemID = hitItem.id
+        moveInteraction = .moveItem(hitItem.id)
+        if let startPoint, startPoint != currentPoint {
+            let delta = CGPoint(x: currentPoint.x - startPoint.x, y: currentPoint.y - startPoint.y)
+            moveItem(withID: hitItem.id, by: delta)
+        }
+        draggingLastPoint = currentPoint
     }
 
     private func isResizable(_ kind: MarkupShapeKind) -> Bool {
@@ -879,7 +1223,8 @@ private struct MarkupEditorView: View {
 
     private func moveItem(withID id: UUID, by delta: CGPoint) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index] = translated(item: items[index], by: delta)
+        let adjustedDelta = boundedTranslation(for: items[index], proposed: delta)
+        items[index] = translated(item: items[index], by: adjustedDelta)
     }
 
     private func resizeShape(withID id: UUID, handle: ResizeHandle, to point: CGPoint) {
@@ -921,10 +1266,32 @@ private struct MarkupEditorView: View {
             minX = clampedX
         }
 
+        let minSpan: CGFloat = 0.015
+        var resolvedMinX = min(minX, maxX)
+        var resolvedMaxX = max(minX, maxX)
+        var resolvedMinY = min(minY, maxY)
+        var resolvedMaxY = max(minY, maxY)
+
+        if (resolvedMaxX - resolvedMinX) < minSpan {
+            if handle == .left || handle == .topLeft || handle == .bottomLeft {
+                resolvedMinX = max(0, resolvedMaxX - minSpan)
+            } else {
+                resolvedMaxX = min(1, resolvedMinX + minSpan)
+            }
+        }
+
+        if (resolvedMaxY - resolvedMinY) < minSpan {
+            if handle == .bottom || handle == .bottomLeft || handle == .bottomRight {
+                resolvedMinY = max(0, resolvedMaxY - minSpan)
+            } else {
+                resolvedMaxY = min(1, resolvedMinY + minSpan)
+            }
+        }
+
         let resizedShape = MarkupShape(
             kind: shape.kind,
-            start: CGPoint(x: min(minX, maxX), y: max(minY, maxY)),
-            end: CGPoint(x: max(minX, maxX), y: min(minY, maxY)),
+            start: CGPoint(x: resolvedMinX, y: resolvedMaxY),
+            end: CGPoint(x: resolvedMaxX, y: resolvedMinY),
             color: shape.color,
             lineWidth: shape.lineWidth
         )
@@ -941,6 +1308,51 @@ private struct MarkupEditorView: View {
             return .text(MarkupText(text: text.text, anchor: CGPoint(x: text.anchor.x + delta.x, y: text.anchor.y + delta.y), color: text.color, fontSize: text.fontSize, fontChoice: text.fontChoice, backgroundChoice: text.backgroundChoice))
         case .symbol(let symbol):
             return .symbol(MarkupSymbol(symbol: symbol.symbol, anchor: CGPoint(x: symbol.anchor.x + delta.x, y: symbol.anchor.y + delta.y), color: symbol.color, fontSize: symbol.fontSize))
+        }
+    }
+
+    private func clamp(point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, 0), 1),
+            y: min(max(point.y, 0), 1)
+        )
+    }
+
+    private func boundedTranslation(for item: MarkupItem, proposed delta: CGPoint) -> CGPoint {
+        SnipletGeometry.boundedTranslation(for: normalizedBounds(for: item), proposed: delta)
+    }
+
+    private func normalizedBounds(for item: MarkupItem) -> CGRect? {
+        switch item {
+        case .stroke(let stroke):
+            guard let first = stroke.points.first else { return nil }
+            return stroke.points.dropFirst().reduce(CGRect(origin: first, size: .zero)) { partial, point in
+                partial.union(CGRect(origin: point, size: .zero))
+            }
+        case .shape(let shape):
+            return CGRect(
+                x: min(shape.start.x, shape.end.x),
+                y: min(shape.start.y, shape.end.y),
+                width: abs(shape.end.x - shape.start.x),
+                height: abs(shape.end.y - shape.start.y)
+            )
+        case .text(let text):
+            let size = textSize(for: text.text, size: text.fontSize, choice: text.fontChoice)
+            let anchor = denormalize(point: text.anchor, size: canvasImage.size)
+            let rect = SnipletGeometry.textBackgroundRect(anchor: anchor, textSize: size)
+            return SnipletGeometry.normalizedRect(rect, in: canvasImage.size)
+        case .symbol(let symbol):
+            let attributed = NSAttributedString(
+                string: symbol.symbol,
+                attributes: [.font: NSFont.systemFont(ofSize: symbol.fontSize, weight: .bold)]
+            )
+            let size = attributed.size()
+            return CGRect(
+                x: symbol.anchor.x - (size.width / canvasImage.size.width / 2),
+                y: symbol.anchor.y - (size.height / canvasImage.size.height / 2),
+                width: size.width / canvasImage.size.width,
+                height: size.height / canvasImage.size.height
+            )
         }
     }
 
@@ -1070,9 +1482,9 @@ private struct MarkupEditorView: View {
             path.lineJoinStyle = .round
             path.lineCapStyle = stroke.opacity < 1 ? .square : .round
             guard let first = stroke.points.first else { return }
-            path.move(to: denormalize(point: first, size: image.size))
+            path.move(to: renderedPoint(from: first, size: image.size))
             for point in stroke.points.dropFirst() {
-                path.line(to: denormalize(point: point, size: image.size))
+                path.line(to: renderedPoint(from: point, size: image.size))
             }
             path.stroke()
         case .shape(let shape):
@@ -1082,8 +1494,8 @@ private struct MarkupEditorView: View {
             path.lineWidth = shape.lineWidth
             path.lineJoinStyle = .round
             path.lineCapStyle = .round
-            let start = denormalize(point: shape.start, size: image.size)
-            let end = denormalize(point: shape.end, size: image.size)
+            let start = renderedPoint(from: shape.start, size: image.size)
+            let end = renderedPoint(from: shape.end, size: image.size)
 
             switch shape.kind {
             case .rectangle:
@@ -1130,23 +1542,26 @@ private struct MarkupEditorView: View {
 
             path.stroke()
         case .text(let text):
-            let point = denormalize(point: text.anchor, size: image.size)
+            let point = renderedPoint(from: text.anchor, size: image.size)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: nsFont(size: text.fontSize, choice: text.fontChoice),
                 .foregroundColor: NSColor(text.color)
             ]
             let attributed = NSAttributedString(string: text.text, attributes: attributes)
             let size = attributed.size()
-            let drawPoint = CGPoint(x: point.x, y: point.y - (size.height / 2))
+            let drawPoint = SnipletGeometry.textDrawPoint(anchor: point, textSize: size)
             if text.backgroundChoice != .clear {
-                let rect = CGRect(x: drawPoint.x - 8, y: drawPoint.y - 4, width: size.width + 16, height: size.height + 8)
-                let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
+                let path = NSBezierPath(
+                    roundedRect: SnipletGeometry.textBackgroundRect(anchor: point, textSize: size),
+                    xRadius: 8,
+                    yRadius: 8
+                )
                 NSColor(text.backgroundChoice.color).setFill()
                 path.fill()
             }
             attributed.draw(at: drawPoint)
         case .symbol(let symbol):
-            let point = denormalize(point: symbol.anchor, size: image.size)
+            let point = renderedPoint(from: symbol.anchor, size: image.size)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: symbol.fontSize, weight: .bold),
                 .foregroundColor: NSColor(symbol.color)
@@ -1167,12 +1582,7 @@ private struct MarkupEditorView: View {
             let size = attributed.size()
             let imagePoint = denormalize(point: point, size: canvasImage.size)
             let anchor = denormalize(point: text.anchor, size: canvasImage.size)
-            let rect = CGRect(
-                x: anchor.x - (size.width / 2) - 10,
-                y: anchor.y - (size.height / 2) - 6,
-                width: size.width + 20,
-                height: size.height + 12
-            )
+            let rect = SnipletGeometry.textSelectionRect(anchor: anchor, textSize: size)
             if rect.contains(imagePoint) {
                 return text
             }
@@ -1243,6 +1653,10 @@ private struct MarkupEditorView: View {
         )
     }
 
+    private func renderedPoint(from normalizedPoint: CGPoint, size: CGSize) -> CGPoint {
+        SnipletGeometry.renderedImagePoint(from: normalizedPoint, imageSize: size)
+    }
+
     private func swiftUIFont(size: CGFloat, choice: MarkupFontChoice) -> Font {
         switch choice {
         case .rounded:
@@ -1287,6 +1701,10 @@ private struct MarkupEditorView: View {
         let value = text.isEmpty ? " " : text
         let attributed = NSAttributedString(string: value, attributes: [.font: nsFont(size: size, choice: choice)])
         return attributed.size()
+    }
+
+    private func nsImageSizeEquals(_ lhs: CGSize, _ rhs: CGSize) -> Bool {
+        abs(lhs.width - rhs.width) < 0.5 && abs(lhs.height - rhs.height) < 0.5
     }
 }
 
@@ -1358,6 +1776,67 @@ private struct ColorSwatchPicker: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+}
+
+private struct MarkupInteractionOverlay: NSViewRepresentable {
+    let onMouseDown: (CGPoint) -> Void
+    let onMouseDragged: (CGPoint, CGPoint) -> Void
+    let onMouseUp: (CGPoint, CGPoint) -> Void
+
+    func makeNSView(context: Context) -> InteractionView {
+        let view = InteractionView()
+        view.onMouseDown = onMouseDown
+        view.onMouseDragged = onMouseDragged
+        view.onMouseUp = onMouseUp
+        return view
+    }
+
+    func updateNSView(_ nsView: InteractionView, context: Context) {
+        nsView.onMouseDown = onMouseDown
+        nsView.onMouseDragged = onMouseDragged
+        nsView.onMouseUp = onMouseUp
+    }
+
+    final class InteractionView: NSView {
+        var onMouseDown: ((CGPoint) -> Void)?
+        var onMouseDragged: ((CGPoint, CGPoint) -> Void)?
+        var onMouseUp: ((CGPoint, CGPoint) -> Void)?
+
+        private var dragStartLocation: CGPoint?
+
+        // Match SwiftUI's top-left coordinate system so markup placement
+        // math stays consistent between the overlay, preview, and saved render.
+        override var isFlipped: Bool { true }
+        override var acceptsFirstResponder: Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            bounds.contains(point) ? self : nil
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            true
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.makeFirstResponder(self)
+            let location = convert(event.locationInWindow, from: nil)
+            dragStartLocation = location
+            onMouseDown?(location)
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            let currentLocation = convert(event.locationInWindow, from: nil)
+            let startLocation = dragStartLocation ?? currentLocation
+            onMouseDragged?(startLocation, currentLocation)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            let currentLocation = convert(event.locationInWindow, from: nil)
+            let startLocation = dragStartLocation ?? currentLocation
+            onMouseUp?(startLocation, currentLocation)
+            dragStartLocation = nil
         }
     }
 }
