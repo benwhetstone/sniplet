@@ -71,13 +71,13 @@ The public download page is:
 https://github.com/benwhetstone/sniplet/releases/latest
 ```
 
-Because Sniplet is shared without Apple notarization, the DMG includes a plain HTML install guide and hides the app bundle so the safe path is the obvious one:
+Because Sniplet is shared without Apple notarization, the public DMG uses the normal Mac drag-to-Applications flow:
 
 1. Download `Sniplet-Installer.dmg`
 2. Open the disk image
-3. Open `1 - Start Here.html`
-4. Click `Copy Command and Open Terminal`
-5. In Terminal, paste and run the command, then enter your macOS password once when prompted
+3. Drag `Sniplet.app` into `Applications`
+4. Open `Sniplet` from `Applications`
+5. If macOS blocks the first launch, open `System Settings` > `Privacy & Security` and click `Open Anyway` for Sniplet
 
 ## Launch At Login Note
 

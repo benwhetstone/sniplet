@@ -27,7 +27,7 @@ final class AppUpdater {
 
                 showAlert(
                     title: "Update Ready",
-                    message: "Sniplet opened the latest GitHub download. After the disk image opens, open 1 - Start Here.html, click Copy Command and Open Terminal, then paste and run the install command. macOS will ask for your password once to install and approve the update on this Mac."
+                    message: "Sniplet opened the latest GitHub download. Drag Sniplet into Applications. If macOS blocks the first launch, open System Settings > Privacy & Security and click Open Anyway for Sniplet."
                 )
             } catch {
                 showAlert(
