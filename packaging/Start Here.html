@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Install Sniplet</title>
+  <title>Start Here - Install Sniplet</title>
   <style>
     :root {
       color-scheme: light;
@@ -86,11 +86,22 @@
       background: rgba(196, 73, 0, 0.08);
       border-radius: 0.8rem;
     }
+
+    button {
+      margin-top: 1rem;
+      border: 0;
+      border-radius: 999px;
+      padding: 0.85rem 1.25rem;
+      background: var(--accent);
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <main>
-    <h1>Install Sniplet</h1>
+    <h1>Start Here</h1>
     <p>Because Sniplet is shared without Apple notarization, macOS may block anything executable that comes directly from the download. This page is the safe path around that.</p>
     <ol>
       <li>Open Terminal on your Mac.</li>
@@ -99,9 +110,22 @@
       <li>Enter your macOS password once when prompted.</li>
     </ol>
     <div class="command">
-      <code>sudo /bin/zsh -c 'set -e; volume=$(find /Volumes -maxdepth 1 -type d -name "Sniplet*" | head -n 1); app="$volume/Sniplet.app"; target="/Applications/Sniplet.app"; [[ -d "$app" ]] || { echo "Sniplet disk image not found."; exit 1; }; pkill -f "$target/Contents/MacOS/Sniplet" 2>/dev/null || true; rm -rf "$target"; /usr/bin/ditto --noextattr --norsrc "$app" "$target"; xattr -dr com.apple.quarantine "$target" 2>/dev/null || true; xattr -cr "$target" 2>/dev/null || true; spctl --add --label Sniplet "$target" 2>/dev/null || true; spctl --enable --label Sniplet 2>/dev/null || true; open "$target"'</code>
+      <code id="install-command">sudo /bin/zsh -c 'set -e; app=""; for volume in /Volumes/Sniplet*; do [[ -d "$volume/.Sniplet.app" ]] && { app="$volume/.Sniplet.app"; break; }; done; target="/Applications/Sniplet.app"; [[ -n "$app" ]] || { echo "Sniplet disk image not found. Keep the disk image open and try again."; exit 1; }; pkill -f "$target/Contents/MacOS/Sniplet" 2>/dev/null || true; rm -rf "$target"; /usr/bin/ditto --noextattr --norsrc "$app" "$target"; xattr -dr com.apple.quarantine "$target" 2>/dev/null || true; xattr -cr "$target" 2>/dev/null || true; spctl --add --label Sniplet "$target" 2>/dev/null || true; spctl --enable --label Sniplet 2>/dev/null || true; open "$target"'</code>
     </div>
+    <button id="copy-button" type="button">Copy Install Command</button>
     <p class="note">Keep this disk image open while you run the command so Sniplet can be copied into <strong>/Applications</strong>.</p>
   </main>
+  <script>
+    const button = document.getElementById("copy-button");
+    const command = document.getElementById("install-command").textContent;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(command);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Copy manually";
+      }
+    });
+  </script>
 </body>
 </html>
