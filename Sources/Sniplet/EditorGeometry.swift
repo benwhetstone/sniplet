@@ -106,7 +106,7 @@ enum SnipletGeometry {
     static func renderedImagePoint(from normalizedPoint: CGPoint, imageSize: CGSize) -> CGPoint {
         CGPoint(
             x: normalizedPoint.x * imageSize.width,
-            y: normalizedPoint.y * imageSize.height
+            y: (1 - normalizedPoint.y) * imageSize.height
         )
     }
 }

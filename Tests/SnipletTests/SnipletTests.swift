@@ -103,7 +103,7 @@ func renderedImagePointMatchesFlippedImageContext() {
     )
 
     #expect(point.x == 100)
-    #expect(point.y == 150)
+    #expect(point.y == 50)
 }
 
 @Test
