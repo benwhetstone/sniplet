@@ -71,12 +71,12 @@ The public download page is:
 https://github.com/benwhetstone/sniplet/releases/latest
 ```
 
-Because Sniplet is shared without Apple notarization, the DMG includes an installer helper:
+Because Sniplet is shared without Apple notarization, the DMG includes a plain HTML install guide:
 
 1. Download `Sniplet-Installer.dmg`
 2. Open the disk image
-3. Run `Install Sniplet.command`
-4. Enter your macOS password once when prompted so it can copy `Sniplet.app` into `/Applications`, clear quarantine, and approve Sniplet on that Mac
+3. Open `Start Here.html`
+4. Paste the one-line Terminal command it shows and enter your macOS password once when prompted
 
 ## Launch At Login Note
 
